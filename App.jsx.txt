@@ -1,0 +1,679 @@
+import { useState, useEffect } from "react";
+
+const DB = {
+  async get(key) {
+    try { const r = await window.storage.get(key, true); return r ? JSON.parse(r.value) : null; } catch { return null; }
+  },
+  async set(key, val) {
+    try { await window.storage.set(key, JSON.stringify(val), true); return true; } catch { return false; }
+  },
+};
+
+const sessionLoad = () => { try { return JSON.parse(localStorage.getItem("hom_session")); } catch { return null; } };
+const sessionSave = v => localStorage.setItem("hom_session", JSON.stringify(v));
+const sessionClear = () => localStorage.removeItem("hom_session");
+
+const initEmployees = [
+  { id:"e1", name:"山田 太郎", email:"yamada@example.com", password:"1234", hourlyWage:1050, role:"staff", isFirstLogin:false },
+  { id:"e2", name:"鈴木 花子", email:"suzuki@example.com", password:"1234", hourlyWage:1100, role:"staff", isFirstLogin:false },
+  { id:"admin", name:"オーナー", email:"owner@homunculus.com", password:"admin", hourlyWage:0, role:"admin", isFirstLogin:false },
+];
+
+// ランダムな初期パスワード生成（英数字6文字）
+const genPassword = () => Math.random().toString(36).slice(2,8).toUpperCase();
+
+const fmt = d => new Date(d).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+const diffMin = (a,b) => Math.round((new Date(b)-new Date(a))/60000);
+const calcPay = (mins,wage) => Math.floor((mins/60)*wage);
+
+const C = {
+  bg:"#f4f9f0", bgDeep:"#e8f4e0",
+  surface:"#1a1a1a", surfaceLight:"#2a2a2a",
+  card:"#ffffff", cardAlt:"#f0f8eb",
+  border:"#c8e6b8",
+  accent:"#4ac800", accentLight:"#6de020", accentDark:"#38a000",
+  text:"#1a1a1a", textLight:"#3a3a3a", muted:"#7a9a6a",
+  success:"#38a000", danger:"#cc3300", white:"#ffffff",
+};
+
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{width:100%;min-height:100%;background:#f4f9f0;}
+  .gothic{font-family:'Yu Gothic','游ゴシック','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;font-weight:500;letter-spacing:0.04em;}
+  input,select,button{-webkit-appearance:none;appearance:none;font-family:'Noto Sans JP',sans-serif;}
+  input:focus,select:focus{outline:none;border-color:#4ac800!important;box-shadow:0 0 0 3px rgba(74,200,0,0.15);}
+  input,select{font-size:16px!important;}
+  button{cursor:pointer;-webkit-tap-highlight-color:transparent;}
+`;
+
+const HomLogo = ({size=40}) => (
+  <svg width={size} height={size} viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" strokeWidth="2"/>
+    <path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#ffffff" strokeWidth="2.5" opacity="0.9"/>
+    <path d="M15 65 Q30 35 50 55 Q70 75 85 45" fill="none" stroke="#ffffff" strokeWidth="2" opacity="0.7"/>
+    <path d="M25 35 Q45 55 55 35 Q65 15 80 35" fill="none" stroke="#ffffff" strokeWidth="2" opacity="0.6"/>
+    <circle cx="30" cy="45" r="4" fill="#ffffff" opacity="0.8"/>
+    <circle cx="65" cy="38" r="3" fill="#ffffff" opacity="0.7"/>
+    <circle cx="72" cy="62" r="3.5" fill="#ffffff" opacity="0.8"/>
+    <circle cx="40" cy="68" r="3" fill="#ffffff" opacity="0.6"/>
+  </svg>
+);
+
+const Logo = ({large=false}) => (
+  <div style={{display:"flex",flexDirection:large?"column":"row",alignItems:"center",gap:large?10:10}}>
+    <HomLogo size={large?64:36}/>
+    <div style={{textAlign:large?"center":"left"}}>
+      <div className="gothic" style={{fontSize:large?24:16,fontWeight:700,color:"#4ac800",letterSpacing:large?3:2,lineHeight:1}}>HOMUNCULUS</div>
+      {large && <div style={{fontSize:11,color:"rgba(74,200,0,0.6)",marginTop:6,letterSpacing:3}}>ホムンクルス</div>}
+    </div>
+  </div>
+);
+
+const Divider = ({m="14px 0"}) => (
+  <div style={{margin:m,height:1,background:`linear-gradient(to right,transparent,${C.border},transparent)`}}/>
+);
+
+const Tag = ({color,children}) => (
+  <span style={{background:color+"18",color,border:`1px solid ${color}40`,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:600,letterSpacing:1}}>{children}</span>
+);
+
+const Btn = ({children,onClick,bg,color=C.white,disabled=false,style={}}) => (
+  <button onClick={onClick} disabled={disabled} style={{background:disabled?"#aaa":bg,color:disabled?"#eee":color,border:"none",borderRadius:14,padding:"15px 20px",fontWeight:600,fontSize:16,width:"100%",opacity:disabled?0.7:1,transition:"all .2s",...style}}>
+    {children}
+  </button>
+);
+
+const BottomNav = ({tabs,active,onChange}) => (
+  <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.surface,borderTop:`2px solid ${C.accent}60`,display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+    {tabs.map(([k,l,icon])=>(
+      <button key={k} onClick={()=>onChange(k)} style={{flex:1,background:"none",border:"none",padding:"10px 0 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:active===k?C.accent:"rgba(255,255,255,0.4)",transition:"color .18s"}}>
+        <span style={{fontSize:22}}>{icon}</span>
+        <span style={{fontSize:10,fontWeight:active===k?700:400,letterSpacing:0.5}}>{l}</span>
+        {active===k && <div style={{width:20,height:2,background:C.accent,borderRadius:2,marginTop:1}}/>}
+      </button>
+    ))}
+  </div>
+);
+
+const Loading = ({text="読み込み中..."}) => (
+  <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.bg,gap:16}}>
+    <HomLogo size={56}/>
+    <div style={{color:C.muted,fontSize:13,letterSpacing:2}}>{text}</div>
+  </div>
+);
+
+const inputSt = {width:"100%",background:C.white,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"14px 16px",color:C.text,transition:"all .2s"};
+
+// ════════════════════════════════════════════════
+// LOGIN
+// ════════════════════════════════════════════════
+function LoginScreen({onLogin}) {
+  const [email,setEmail]=useState("");
+  const [pass,setPass]=useState("");
+  const [err,setErr]=useState("");
+  const [emailErr,setEmailErr]=useState("");
+  const [showPass,setShowPass]=useState(false);
+  const [loading,setLoading]=useState(false);
+
+  const validateEmail = v => {
+    if(!v) return "メールアドレスを入力してください";
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return "正しい形式で入力してください";
+    return "";
+  };
+
+  const handleLogin = async() => {
+    const ee=validateEmail(email);
+    if(ee){setEmailErr(ee);return;}
+    if(!pass){setErr("パスワードを入力してください");return;}
+    setLoading(true);
+    let emps=await DB.get("employees");
+    if(!emps){emps=initEmployees;await DB.set("employees",emps);}
+    const user=emps.find(e=>e.email===email&&e.password===pass);
+    if(!user){setErr("メールアドレスまたはパスワードが正しくありません");setLoading(false);return;}
+    sessionSave(user); onLogin(user);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.surface} 0%,#0f1f0f 60%,#1a2a1a 100%)`,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",padding:"24px 20px",position:"relative",overflow:"hidden"}}>
+      <style>{css}</style>
+      <div style={{position:"absolute",top:-80,right:-80,width:300,height:300,borderRadius:"50%",border:`1px solid ${C.accent}20`,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",bottom:-60,left:-60,width:220,height:220,borderRadius:"50%",border:`1px solid ${C.accent}15`,pointerEvents:"none"}}/>
+      <div style={{width:"100%",maxWidth:420,background:C.card,borderRadius:24,padding:"36px 24px 28px",position:"relative",overflow:"hidden",boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}><Logo large/></div>
+        <Divider m="0 0 24px"/>
+        <div style={{marginBottom:18}}>
+          <label style={{fontSize:13,color:C.textLight,display:"block",marginBottom:8,fontWeight:500}}>メールアドレス</label>
+          <input style={{...inputSt,borderColor:emailErr?C.danger:C.border}}
+            type="email" inputMode="email" autoComplete="email" value={email} placeholder="example@email.com"
+            onChange={e=>{let v=e.target.value.replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/　/g," ");setEmail(v);setEmailErr("");setErr("");}}
+            onBlur={()=>setEmailErr(validateEmail(email))}
+          />
+          {emailErr && <div style={{color:C.danger,fontSize:12,marginTop:6}}>✦ {emailErr}</div>}
+        </div>
+        <div style={{marginBottom:22}}>
+          <label style={{fontSize:13,color:C.textLight,display:"block",marginBottom:8,fontWeight:500}}>パスワード</label>
+          <div style={{position:"relative"}}>
+            <input style={{...inputSt,paddingRight:56}} type={showPass?"text":"password"} autoComplete="current-password" value={pass} placeholder="パスワード"
+              onChange={e=>{setPass(e.target.value);setErr("");}}
+              onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+            />
+            <button onClick={()=>setShowPass(s=>!s)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontSize:13,padding:"4px 8px"}}>
+              {showPass?"隠す":"表示"}
+            </button>
+          </div>
+        </div>
+        {err && <div style={{background:"#fff0f0",border:`1px solid ${C.danger}30`,borderRadius:10,padding:"12px 14px",color:C.danger,fontSize:13,marginBottom:16}}>✦ {err}</div>}
+        <Btn onClick={handleLogin} disabled={loading} bg={`linear-gradient(135deg,${C.accent},${C.accentLight})`} color="#1a1a1a" style={{boxShadow:`0 6px 20px ${C.accent}50`,fontWeight:700}}>
+          {loading?"確認中...":"ログイン"}
+        </Btn>
+        <Divider m="22px 0 14px"/>
+        <div style={{fontSize:11,color:C.muted,lineHeight:2.2,textAlign:"center"}}>
+          <div style={{fontWeight:600,color:C.textLight,marginBottom:2}}>デモアカウント</div>
+          <div>スタッフ：yamada@example.com ／ 1234</div>
+          <div>オーナー：owner@homunculus.com ／ admin</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════
+// 初回パスワード変更画面
+// ════════════════════════════════════════════════
+function ChangePasswordScreen({user, onComplete}) {
+  const [newPass,setNewPass]=useState("");
+  const [confirmPass,setConfirmPass]=useState("");
+  const [showNew,setShowNew]=useState(false);
+  const [showConfirm,setShowConfirm]=useState(false);
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const handleChange = async() => {
+    if(newPass.length < 6){setErr("パスワードは6文字以上で設定してください");return;}
+    if(newPass !== confirmPass){setErr("パスワードが一致しません");return;}
+    setLoading(true);
+    const emps = await DB.get("employees")||[];
+    const updated = emps.map(e=>e.id===user.id ? {...e, password:newPass, isFirstLogin:false} : e);
+    await DB.set("employees", updated);
+    const newUser = {...user, password:newPass, isFirstLogin:false};
+    sessionSave(newUser);
+    onComplete(newUser);
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.surface} 0%,#0f1f0f 60%,#1a2a1a 100%)`,display:"flex",flexDirection:"column",justifyContent:"center",alignItems:"center",padding:"24px 20px"}}>
+      <style>{css}</style>
+      <div style={{width:"100%",maxWidth:420,background:C.card,borderRadius:24,padding:"36px 24px 28px",boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}}>
+        <div style={{textAlign:"center",marginBottom:24}}><Logo large/></div>
+        <Divider m="0 0 20px"/>
+
+        <div style={{background:`${C.accent}12`,border:`1px solid ${C.accent}40`,borderRadius:12,padding:"14px 16px",marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:600,color:C.accentDark,marginBottom:4}}>ようこそ、{user.name}さん！</div>
+          <div style={{fontSize:12,color:C.muted,lineHeight:1.7}}>初回ログインです。セキュリティのため、新しいパスワードを設定してください。</div>
+        </div>
+
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:13,color:C.textLight,display:"block",marginBottom:8,fontWeight:500}}>新しいパスワード <span style={{fontSize:11,color:C.muted}}>（6文字以上）</span></label>
+          <div style={{position:"relative"}}>
+            <input style={{...inputSt,paddingRight:56}} type={showNew?"text":"password"} value={newPass} placeholder="新しいパスワード"
+              onChange={e=>{setNewPass(e.target.value);setErr("");}}
+            />
+            <button onClick={()=>setShowNew(s=>!s)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontSize:13,padding:"4px 8px"}}>
+              {showNew?"隠す":"表示"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{marginBottom:22}}>
+          <label style={{fontSize:13,color:C.textLight,display:"block",marginBottom:8,fontWeight:500}}>パスワード（確認）</label>
+          <div style={{position:"relative"}}>
+            <input style={{...inputSt,paddingRight:56}} type={showConfirm?"text":"password"} value={confirmPass} placeholder="もう一度入力"
+              onChange={e=>{setConfirmPass(e.target.value);setErr("");}}
+              onKeyDown={e=>e.key==="Enter"&&handleChange()}
+            />
+            <button onClick={()=>setShowConfirm(s=>!s)} style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:C.muted,fontSize:13,padding:"4px 8px"}}>
+              {showConfirm?"隠す":"表示"}
+            </button>
+          </div>
+          {/* パスワード一致インジケーター */}
+          {confirmPass && (
+            <div style={{marginTop:6,fontSize:12,color:newPass===confirmPass?C.success:C.danger}}>
+              {newPass===confirmPass?"✓ パスワードが一致しています":"✗ パスワードが一致しません"}
+            </div>
+          )}
+        </div>
+
+        {err && <div style={{background:"#fff0f0",border:`1px solid ${C.danger}30`,borderRadius:10,padding:"12px 14px",color:C.danger,fontSize:13,marginBottom:16}}>✦ {err}</div>}
+
+        <Btn onClick={handleChange} disabled={loading} bg={`linear-gradient(135deg,${C.accent},${C.accentLight})`} color="#1a1a1a" style={{fontWeight:700,boxShadow:`0 6px 20px ${C.accent}50`}}>
+          {loading?"設定中...":"パスワードを設定して始める"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════
+// STAFF
+// ════════════════════════════════════════════════
+function StaffDashboard({user,onLogout}) {
+  const [tab,setTab]=useState("punch");
+  const [now,setNow]=useState(new Date());
+  const [records,setRecords]=useState(null);
+  const [shifts,setShifts]=useState(null);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
+  useEffect(()=>{
+    (async()=>{
+      const [r,s]=await Promise.all([DB.get("records"),DB.get("shifts")]);
+      setRecords(r||{}); setShifts(s||{});
+    })();
+  },[]);
+
+  if(!records||!shifts) return <Loading/>;
+
+  const todayKey=new Date().toISOString().split("T")[0];
+  const todayRec=(records[user.id]||[]).find(r=>r.date===todayKey)||null;
+
+  const clockIn=async()=>{
+    setSaving(true);
+    const fresh=await DB.get("records")||{};
+    const rec={id:Date.now(),date:todayKey,inTime:new Date().toISOString(),outTime:null,mins:null,pay:null};
+    const u={...fresh,[user.id]:[...(fresh[user.id]||[]),rec]};
+    await DB.set("records",u); setRecords(u); setSaving(false);
+  };
+
+  const clockOut=async()=>{
+    setSaving(true);
+    const fresh=await DB.get("records")||{};
+    const tr=fresh[user.id]?.find(r=>r.date===todayKey&&!r.outTime);
+    if(!tr){setSaving(false);return;}
+    const out=new Date().toISOString();
+    const mins=diffMin(tr.inTime,out);
+    const pay=calcPay(mins,user.hourlyWage);
+    const u={...fresh,[user.id]:fresh[user.id].map(r=>r.id===tr.id?{...r,outTime:out,mins,pay}:r)};
+    await DB.set("records",u); setRecords(u); setSaving(false);
+  };
+
+  const today=new Date();
+  const yr=today.getFullYear(),mo=today.getMonth();
+  const [selDate,setSelDate]=useState(todayKey);
+  const [shiftStart,setShiftStart]=useState("12:00");
+  const [shiftEnd,setShiftEnd]=useState("17:00");
+  const shiftKey=`${user.id}_${selDate}`;
+  const hours=Array.from({length:13},(_,i)=>`${(12+i).toString().padStart(2,"0")}:00`);
+
+  const saveShift=async()=>{
+    setSaving(true);
+    const fresh=await DB.get("shifts")||{};
+    const u={...fresh,[shiftKey]:{start:shiftStart,end:shiftEnd}};
+    await DB.set("shifts",u); setShifts(u); setSaving(false);
+    alert(`シフト登録完了：${selDate}  ${shiftStart} 〜 ${shiftEnd}`);
+  };
+
+  const firstDay=new Date(yr,mo,1).getDay();
+  const daysInMonth=new Date(yr,mo+1,0).getDate();
+  const calDays=Array.from({length:firstDay},()=>null).concat(Array.from({length:daysInMonth},(_,i)=>i+1));
+  const myRecs=(records[user.id]||[]).slice().reverse();
+
+  return (
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Noto Sans JP',sans-serif"}}>
+      <style>{css}</style>
+      <div style={{background:C.surface,borderBottom:`2px solid ${C.accent}60`,padding:"13px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:50}}>
+        <Logo/>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{color:"rgba(255,255,255,0.65)",fontSize:13}}>{user.name}</span>
+          <button onClick={onLogout} style={{background:"none",border:`1px solid rgba(255,255,255,0.25)`,borderRadius:8,padding:"6px 12px",color:"rgba(255,255,255,0.7)",fontSize:12}}>退出</button>
+        </div>
+      </div>
+
+      <div style={{padding:"20px 16px",paddingBottom:"calc(88px + env(safe-area-inset-bottom,0px))"}}>
+        {tab==="punch" && (
+          <div>
+            <div style={{background:C.surface,borderRadius:20,padding:"24px 20px",marginBottom:16,textAlign:"center",position:"relative",overflow:"hidden",boxShadow:"0 8px 28px rgba(0,0,0,0.3)"}}>
+              <div style={{position:"absolute",top:-40,right:-40,width:150,height:150,borderRadius:"50%",border:`1px solid ${C.accent}20`,pointerEvents:"none"}}/>
+              <div className="gothic" style={{fontSize:52,fontWeight:600,color:C.white,letterSpacing:2,position:"relative",lineHeight:1}}>
+                {now.toLocaleTimeString("ja-JP")}
+              </div>
+              <div style={{color:"rgba(255,255,255,0.5)",marginTop:8,fontSize:12,letterSpacing:1.5,position:"relative"}}>
+                {now.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}
+              </div>
+            </div>
+
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:"22px 20px",marginBottom:14}}>
+              <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:16}}>本日の勤務</div>
+              {!todayRec ? (
+                <Btn onClick={clockIn} disabled={saving} bg={`linear-gradient(135deg,${C.accent},${C.accentLight})`} color="#1a1a1a" style={{fontSize:18,padding:"18px",boxShadow:`0 4px 16px ${C.accent}50`,borderRadius:16,fontWeight:700}}>
+                  {saving?"処理中...":"出勤する"}
+                </Btn>
+              ) : !todayRec.outTime ? (
+                <div>
+                  <div style={{background:"#f0fff0",border:`1px solid ${C.accent}40`,borderRadius:12,padding:"12px 16px",marginBottom:14,fontSize:13,color:C.success,display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:16}}>✅</span> 出勤中  ·  {fmt(todayRec.inTime)} より
+                  </div>
+                  <Btn onClick={clockOut} disabled={saving} bg={`linear-gradient(135deg,${C.danger},#ee4400)`} color={C.white} style={{fontSize:18,padding:"18px",boxShadow:`0 4px 16px ${C.danger}40`,borderRadius:16,fontWeight:700}}>
+                    {saving?"処理中...":"退勤する"}
+                  </Btn>
+                </div>
+              ) : (
+                <div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+                    {[["出勤",fmt(todayRec.inTime)],["退勤",fmt(todayRec.outTime)],["勤務",`${Math.floor(todayRec.mins/60)}h${todayRec.mins%60}m`]].map(([l,v])=>(
+                      <div key={l} style={{background:C.cardAlt,border:`1px solid ${C.border}`,borderRadius:12,padding:"13px 8px",textAlign:"center"}}>
+                        <div style={{fontSize:11,color:C.muted,letterSpacing:1}}>{l}</div>
+                        <div className="gothic" style={{fontWeight:600,marginTop:5,fontSize:15,color:C.accentDark}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{background:`linear-gradient(135deg,${C.accent}15,${C.accentLight}20)`,border:`1px solid ${C.accent}50`,borderRadius:14,padding:18,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:C.muted,letterSpacing:2,marginBottom:6}}>本日の給与</div>
+                    <div className="gothic" style={{fontWeight:700,fontSize:30,color:C.accentDark}}>¥ {todayRec.pay?.toLocaleString()}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"13px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,color:C.textLight}}>登録時給</span>
+              <span className="gothic" style={{fontSize:18,fontWeight:600,color:C.accentDark}}>¥ {user.hourlyWage.toLocaleString()} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>/ hour</span></span>
+            </div>
+          </div>
+        )}
+
+        {tab==="shift" && (
+          <div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:"20px 16px",marginBottom:16}}>
+              <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:16}}>{yr}年{mo+1}月 · シフトカレンダー</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,textAlign:"center"}}>
+                {["日","月","火","水","木","金","土"].map((d,i)=>(
+                  <div key={d} style={{fontSize:11,color:i===0?C.danger:i===6?C.accentDark:C.muted,paddingBottom:8,fontWeight:600}}>{d}</div>
+                ))}
+                {calDays.map((d,i)=>{
+                  if(!d) return <div key={i}/>;
+                  const dk=`${yr}-${String(mo+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+                  const hasShift=!!shifts[`${user.id}_${dk}`];
+                  const isToday=d===today.getDate();
+                  const isSel=dk===selDate;
+                  const dow=new Date(yr,mo,d).getDay();
+                  return (
+                    <button key={i} onClick={()=>setSelDate(dk)} style={{background:isSel?C.accent:isToday?C.accent+"18":"transparent",color:isSel?"#1a1a1a":dow===0?C.danger:dow===6?C.accentDark:C.text,border:isToday&&!isSel?`2px solid ${C.accent}60`:hasShift?`1px solid ${C.accentDark}80`:"1px solid transparent",borderRadius:8,padding:"8px 0",fontSize:13,fontWeight:isSel||isToday?700:400,position:"relative",width:"100%"}}>
+                      {d}
+                      {hasShift && <div style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",width:4,height:4,borderRadius:"50%",background:C.accentDark}}/>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:"20px 16px"}}>
+              <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:8}}>{selDate} のシフト</div>
+              {shifts[shiftKey] && <Tag color={C.accentDark}>登録済</Tag>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,margin:"16px 0"}}>
+                {[["開始時刻",shiftStart,setShiftStart],["終了時刻",shiftEnd,setShiftEnd]].map(([l,v,sv])=>(
+                  <div key={l}>
+                    <label style={{fontSize:12,color:C.textLight,display:"block",marginBottom:8}}>{l}</label>
+                    <select value={v} onChange={e=>sv(e.target.value)} style={{width:"100%",background:C.white,border:`1.5px solid ${C.border}`,borderRadius:12,padding:"14px 12px",color:C.text}}>
+                      {hours.map(h=><option key={h}>{h}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+              <Btn onClick={saveShift} disabled={saving} bg={`linear-gradient(135deg,${C.accent},${C.accentLight})`} color="#1a1a1a">
+                {saving?"保存中...":"シフトを登録する"}
+              </Btn>
+              {shifts[shiftKey] && <div style={{marginTop:10,textAlign:"center",fontSize:12,color:C.muted}}>登録中：{shifts[shiftKey].start} 〜 {shifts[shiftKey].end}</div>}
+            </div>
+          </div>
+        )}
+
+        {tab==="history" && (
+          <div>
+            <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:16}}>勤務履歴</div>
+            {myRecs.length===0
+              ? <div style={{textAlign:"center",padding:60,color:C.muted}}>まだ記録がありません</div>
+              : myRecs.map(r=>(
+                <div key={r.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",marginBottom:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div className="gothic" style={{fontWeight:600,color:C.accentDark,fontSize:14}}>{r.date}</div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:4}}>
+                      {fmt(r.inTime)} → {r.outTime?fmt(r.outTime):"勤務中"}
+                      {r.mins && <span style={{marginLeft:6}}>（{Math.floor(r.mins/60)}h{r.mins%60}m）</span>}
+                    </div>
+                  </div>
+                  {r.pay!=null
+                    ? <span className="gothic" style={{fontWeight:600,color:C.accentDark,fontSize:17}}>¥{r.pay.toLocaleString()}</span>
+                    : <Tag color={C.success}>勤務中</Tag>}
+                </div>
+              ))
+            }
+          </div>
+        )}
+      </div>
+      <BottomNav tabs={[["punch","打刻","⏱"],["shift","シフト","📅"],["history","履歴","📋"]]} active={tab} onChange={setTab}/>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════
+// ADMIN
+// ════════════════════════════════════════════════
+function AdminDashboard({user,onLogout}) {
+  const [tab,setTab]=useState("overview");
+  const [employees,setEmployees]=useState(null);
+  const [records,setRecords]=useState(null);
+  const [selEmp,setSelEmp]=useState(null);
+  const [newEmp,setNewEmp]=useState({name:"",email:"",hourlyWage:1050});
+  const [saving,setSaving]=useState(false);
+  const [addedEmp,setAddedEmp]=useState(null); // 追加直後に初期パスワード表示用
+
+  useEffect(()=>{
+    (async()=>{
+      const [emps,recs]=await Promise.all([DB.get("employees"),DB.get("records")]);
+      setEmployees(emps||initEmployees);
+      setRecords(recs||{});
+    })();
+  },[]);
+
+  if(!employees||!records) return <Loading/>;
+
+  const staffList=employees.filter(e=>e.role==="staff");
+  const empRecs=id=>(records[id]||[]).filter(r=>r.outTime);
+  const totalPay=id=>empRecs(id).reduce((s,r)=>s+(r.pay||0),0);
+  const totalAll=staffList.reduce((s,e)=>s+totalPay(e.id),0);
+
+  const exportCSV=id=>{
+    const emp=employees.find(e=>e.id===id);
+    const rows=[["日付","出勤時刻","退勤時刻","勤務時間(分)","支払い金額(円)"]];
+    empRecs(id).forEach(r=>rows.push([r.date,fmt(r.inTime),fmt(r.outTime),r.mins,r.pay]));
+    const csv="\uFEFF"+rows.map(r=>r.join(",")).join("\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download=`勤怠記録_${emp.name}.csv`;a.click();
+    setTimeout(()=>{
+      if(window.confirm("CSVをダウンロードしました。\nGoogleスプレッドシートで開きますか？")){
+        window.open("https://sheets.new","_blank");
+      }
+    },800);
+  };
+
+  const addEmployee=async()=>{
+    if(!newEmp.name||!newEmp.email){alert("名前とメールアドレスは必須です");return;}
+    if(Number(newEmp.hourlyWage)<=0){alert("アルバイト単価を正しく入力してください");return;}
+    setSaving(true);
+    const initPass=genPassword();
+    const emp={id:`e${Date.now()}`,name:newEmp.name,email:newEmp.email,password:initPass,hourlyWage:Number(newEmp.hourlyWage),role:"staff",isFirstLogin:true};
+    const u=[...employees,emp];
+    await DB.set("employees",u);
+    setEmployees(u);
+    setAddedEmp({...emp, initPass});
+    setNewEmp({name:"",email:"",hourlyWage:1050});
+    setSaving(false);
+  };
+
+  return (
+    <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'Noto Sans JP',sans-serif"}}>
+      <style>{css}</style>
+      <div style={{background:C.surface,borderBottom:`2px solid ${C.accent}60`,padding:"13px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:50}}>
+        <Logo/>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <Tag color={C.accent}>OWNER</Tag>
+          <button onClick={onLogout} style={{background:"none",border:`1px solid rgba(255,255,255,0.25)`,borderRadius:8,padding:"6px 12px",color:"rgba(255,255,255,0.7)",fontSize:12}}>退出</button>
+        </div>
+      </div>
+
+      <div style={{padding:"20px 16px",paddingBottom:"calc(88px + env(safe-area-inset-bottom,0px))"}}>
+
+        {tab==="overview" && (
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+              {[["スタッフ数",staffList.length,"名"],["累計出勤",Object.values(records).flat().filter(r=>r.outTime).length,"件"]].map(([l,num,unit])=>(
+                <div key={l} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"18px 16px",borderTop:`3px solid ${C.accent}`}}>
+                  <div style={{fontSize:11,color:C.muted,letterSpacing:2}}>{l}</div>
+                  <div className="gothic" style={{fontSize:26,marginTop:8,color:C.accentDark,display:"flex",alignItems:"baseline",gap:4}}>
+                    <span style={{fontWeight:600}}>{num}</span>
+                    <span style={{fontSize:13,fontWeight:400,color:C.muted}}>{unit}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:"18px 20px",marginBottom:20,borderTop:`3px solid ${C.accent}`}}>
+              <div style={{fontSize:11,color:C.muted,letterSpacing:2}}>累計支払い</div>
+              <div className="gothic" style={{fontSize:30,marginTop:8,color:C.accentDark,fontWeight:600}}>¥ {totalAll.toLocaleString()}</div>
+            </div>
+            <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:14}}>スタッフ別サマリー</div>
+            {staffList.map(e=>(
+              <div key={e.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:14,padding:"16px 18px",marginBottom:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span className="gothic" style={{fontWeight:600,fontSize:15}}>{e.name}</span>
+                      {e.isFirstLogin && <Tag color={C.danger}>未初期設定</Tag>}
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>時給 ¥{e.hourlyWage.toLocaleString()} · 出勤 {empRecs(e.id).length}回</div>
+                  </div>
+                  <span className="gothic" style={{fontWeight:600,color:C.accentDark,fontSize:18}}>¥{totalPay(e.id).toLocaleString()}</span>
+                </div>
+                <button onClick={()=>exportCSV(e.id)} style={{background:C.accent,color:"#ffffff",border:"none",borderRadius:10,padding:"10px",width:"100%",fontSize:14,fontFamily:"'Noto Sans JP',sans-serif",fontWeight:600}}>
+                  スプレッドシートで開く
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="employees" && (
+          <div>
+            <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:16}}>従業員一覧</div>
+            {staffList.map(e=>(
+              <div key={e.id} style={{marginBottom:14}}>
+                <div onClick={()=>setSelEmp(selEmp===e.id?null:e.id)} style={{background:C.card,border:`1.5px solid ${selEmp===e.id?C.accent:C.border}`,borderRadius:selEmp===e.id?"16px 16px 0 0":16,padding:"16px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span className="gothic" style={{fontWeight:600,fontSize:15}}>{e.name}</span>
+                      {e.isFirstLogin && <Tag color={C.danger}>未初期設定</Tag>}
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>{e.email}</div>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <Tag color={C.accentDark}>¥{e.hourlyWage.toLocaleString()}/h</Tag>
+                    <span style={{color:C.muted,fontSize:12}}>{selEmp===e.id?"▲":"▼"}</span>
+                  </div>
+                </div>
+                {selEmp===e.id && (
+                  <div style={{background:C.cardAlt,border:`1.5px solid ${C.accent}`,borderTop:"none",borderRadius:"0 0 16px 16px",padding:"16px 18px"}}>
+                    {empRecs(e.id).length===0
+                      ? <div style={{color:C.muted,fontSize:13}}>勤務記録がありません</div>
+                      : empRecs(e.id).slice().reverse().map(r=>(
+                        <div key={r.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
+                          <div style={{display:"flex",justifyContent:"space-between"}}>
+                            <span>{r.date}</span>
+                            <span className="gothic" style={{color:C.accentDark,fontWeight:600}}>¥{r.pay?.toLocaleString()}</span>
+                          </div>
+                          <div style={{color:C.muted,fontSize:11,marginTop:2}}>{fmt(r.inTime)} 〜 {fmt(r.outTime)}（{Math.floor(r.mins/60)}h{r.mins%60}m）</div>
+                        </div>
+                      ))
+                    }
+                    <button onClick={()=>exportCSV(e.id)} style={{background:C.accent,color:"#ffffff",border:"none",borderRadius:10,padding:"10px",width:"100%",fontSize:14,fontFamily:"'Noto Sans JP',sans-serif",fontWeight:600,marginTop:12}}>
+                      スプレッドシートで開く
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="add" && (
+          <div>
+            {/* 追加完了後：初期パスワード表示 */}
+            {addedEmp && (
+              <div style={{background:"#f0fff0",border:`2px solid ${C.accent}`,borderRadius:16,padding:"20px 18px",marginBottom:20}}>
+                <div style={{fontSize:13,fontWeight:700,color:C.accentDark,marginBottom:12}}>✅ {addedEmp.name} を追加しました</div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:8}}>以下の情報をスタッフにLINEで伝えてください：</div>
+                <div style={{background:C.white,borderRadius:10,padding:"14px 16px",marginBottom:8}}>
+                  <div style={{fontSize:12,color:C.muted,marginBottom:4}}>メールアドレス</div>
+                  <div className="gothic" style={{fontWeight:600,fontSize:15,color:C.text}}>{addedEmp.email}</div>
+                </div>
+                <div style={{background:C.white,borderRadius:10,padding:"14px 16px",marginBottom:14}}>
+                  <div style={{fontSize:12,color:C.muted,marginBottom:4}}>初期パスワード（初回ログイン後に変更されます）</div>
+                  <div className="gothic" style={{fontWeight:700,fontSize:22,color:C.accentDark,letterSpacing:4}}>{addedEmp.initPass}</div>
+                </div>
+                <button onClick={()=>setAddedEmp(null)} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px",width:"100%",fontSize:13,color:C.muted,fontFamily:"'Noto Sans JP',sans-serif"}}>
+                  閉じる
+                </button>
+              </div>
+            )}
+
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:20,padding:"24px 20px"}}>
+              <div style={{fontSize:12,color:C.muted,letterSpacing:2,marginBottom:20}}>新規スタッフ追加</div>
+              {[["お名前","name","text","山田 太郎"],["メールアドレス","email","email","example@email.com"]].map(([l,k,t,ph])=>(
+                <div key={k} style={{marginBottom:16}}>
+                  <label style={{fontSize:13,color:C.textLight,display:"block",marginBottom:8,fontWeight:500}}>{l} <span style={{color:C.danger}}>*</span></label>
+                  <input style={inputSt} type={t} value={newEmp[k]} placeholder={ph} onChange={e=>setNewEmp({...newEmp,[k]:e.target.value})}/>
+                </div>
+              ))}
+              <div style={{marginBottom:24}}>
+                <label style={{fontSize:13,color:C.textLight,display:"block",marginBottom:8,fontWeight:500}}>アルバイト単価 / 時間（円） <span style={{color:C.danger}}>*</span></label>
+                <input style={inputSt} type="number" value={newEmp.hourlyWage} onChange={e=>setNewEmp({...newEmp,hourlyWage:e.target.value})}/>
+              </div>
+              <div style={{background:`${C.accent}10`,border:`1px solid ${C.accent}40`,borderRadius:10,padding:"12px 14px",marginBottom:20}}>
+                <div style={{fontSize:12,color:C.accentDark}}>💡 登録後、初期パスワードが自動発行されます。スタッフはそのパスワードで初回ログインし、自分でパスワードを変更します。</div>
+              </div>
+              <Divider m="0 0 20px"/>
+              <Btn onClick={addEmployee} disabled={saving} bg={`linear-gradient(135deg,${C.accent},${C.accentLight})`} color="#1a1a1a" style={{fontWeight:700}}>
+                {saving?"登録中...":"スタッフを追加する"}
+              </Btn>
+            </div>
+          </div>
+        )}
+      </div>
+      <BottomNav tabs={[["overview","概要","📊"],["employees","従業員管理","👥"],["add","新規追加","➕"]]} active={tab} onChange={setTab}/>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════
+// ROOT
+// ════════════════════════════════════════════════
+export default function App() {
+  const [user,setUser]=useState(()=>sessionLoad());
+
+  useEffect(()=>{
+    (async()=>{
+      const emps=await DB.get("employees");
+      if(!emps) await DB.set("employees",initEmployees);
+    })();
+  },[]);
+
+  const logout=()=>{sessionClear();setUser(null);};
+
+  const handleLogin=u=>{setUser(u);};
+  const handlePasswordChanged=u=>{setUser(u);};
+
+  if(!user) return <LoginScreen onLogin={handleLogin}/>;
+  // 初回ログイン判定
+  if(user.isFirstLogin && user.role==="staff") return <ChangePasswordScreen user={user} onComplete={handlePasswordChanged}/>;
+  if(user.role==="admin") return <AdminDashboard user={user} onLogout={logout}/>;
+  return <StaffDashboard user={user} onLogout={logout}/>;
+}
