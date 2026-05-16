@@ -397,6 +397,14 @@ button{cursor:pointer;}
       <div class="hint-box">💡 登録後、初期パスワードが自動発行されます。スタッフはそのパスワードで初回ログインし、自分でパスワードを変更します。</div>
       <button class="btn btn-primary" id="add-emp-btn" onclick="addEmployee()">スタッフを追加する</button>
     </div>
+    <div class="card" style="border-color:rgba(204,51,0,0.3);">
+      <div class="sec-label" style="color:#cc3300;">⚠ テスト用：デモデータにリセット</div>
+      <div style="font-size:12px;color:#7a9a6a;line-height:1.7;margin-bottom:14px;">
+        すべての従業員・勤務記録・シフトを削除して、デモアカウント（山田太郎・鈴木花子・オーナー）に戻します。<br>
+        <strong style="color:#cc3300;">この操作は元に戻せません。</strong>
+      </div>
+      <button class="btn btn-red" id="reset-btn" onclick="resetDemoData()">デモデータにリセットする</button>
+    </div>
   </div>
   <div class="bottom-nav">
     <button class="nav-btn" onclick="showAdminTab('overview',this)">
@@ -808,6 +816,24 @@ async function addEmployee(){
       </div>
       <button onclick="document.getElementById('added-result').style.display='none'" style="background:none;border:1px solid #c8e6b8;border-radius:10px;padding:10px;width:100%;font-size:13px;color:#7a9a6a;font-family:'Noto Sans JP',sans-serif;">閉じる</button>
     </div>`;
+}
+
+// デモデータにリセット
+async function resetDemoData(){
+  if(!confirm('本当にすべてのデータを削除して、デモアカウントに戻しますか？\n\nこの操作は元に戻せません。')) return;
+  const btn=document.getElementById('reset-btn');
+  btn.textContent='リセット中...'; btn.disabled=true;
+  try{
+    await DB.set('employees',initEmployees);
+    await DB.set('records',null);
+    await DB.set('shifts',null);
+    sessionClear();
+    alert('リセット完了！\nデモアカウントでログインしてください。\n\nスタッフ：yamada@example.com ／ 1234\nオーナー：owner@homunculus.com ／ admin');
+    location.reload();
+  }catch(e){
+    alert('リセット中にエラーが発生しました。もう一度お試しください。');
+    btn.textContent='デモデータにリセットする'; btn.disabled=false;
+  }
 }
 
 init();
