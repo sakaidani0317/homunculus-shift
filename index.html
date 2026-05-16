@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HOMUNCULUS</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;font-family:'Noto Sans JP',sans-serif;background:#f4f9f0;-webkit-tap-highlight-color:transparent;overflow:hidden;}
+input,select,button{font-family:'Noto Sans JP',sans-serif;-webkit-appearance:none;appearance:none;}
+input,select{font-size:16px!important;}
+input:focus,select:focus{outline:none;border-color:#4ac800!important;box-shadow:0 0 0 3px rgba(74,200,0,0.15);}
+button{cursor:pointer;}
+
+/* 画面管理 */
+.screen{display:none;position:fixed;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+.screen.active{display:flex;flex-direction:column;}
+
+/* ログイン画面 */
+#login-screen{background:linear-gradient(160deg,#1a1a1a 0%,#0f1f0f 60%,#1a2a1a 100%);justify-content:center;align-items:center;padding:24px 20px;}
+.login-card{width:100%;max-width:420px;background:#fff;border-radius:24px;padding:36px 24px 28px;box-shadow:0 24px 64px rgba(0,0,0,0.4);}
+.login-logo{text-align:center;margin-bottom:24px;}
+.login-logo-text{font-size:24px;font-weight:700;color:#4ac800;letter-spacing:3px;margin-top:10px;}
+.login-logo-sub{font-size:11px;color:rgba(74,200,0,0.6);margin-top:5px;letter-spacing:3px;}
+.divider{height:1px;background:linear-gradient(to right,transparent,#c8e6b8,transparent);margin:16px 0;}
+.form-group{margin-bottom:16px;}
+.label{font-size:13px;color:#3a3a3a;display:block;margin-bottom:8px;font-weight:500;}
+.input{width:100%;background:#fff;border:1.5px solid #c8e6b8;border-radius:12px;padding:14px 16px;color:#1a1a1a;font-size:16px;}
+.input.error{border-color:#cc3300;}
+.pass-wrap{position:relative;}
+.pass-toggle{position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;color:#7a9a6a;font-size:13px;padding:4px 8px;}
+.err-msg{color:#cc3300;font-size:12px;margin-top:6px;}
+.err-box{background:#fff0f0;border:1px solid rgba(204,51,0,0.3);border-radius:10px;padding:12px 14px;color:#cc3300;font-size:13px;margin-bottom:16px;}
+.btn-login{width:100%;background:linear-gradient(135deg,#4ac800,#6de020);color:#ffffff!important;border:none;border-radius:14px;padding:15px;font-size:16px;font-weight:600;margin-bottom:12px;box-shadow:0 4px 16px rgba(74,200,0,0.4);}
+.demo-info{font-size:11px;color:#7a9a6a;line-height:2.2;text-align:center;}
+.demo-info strong{color:#3a3a3a;}
+
+/* ヘッダー */
+.header{background:#1a1a1a;border-bottom:2px solid rgba(74,200,0,0.4);padding:13px 20px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.header-logo{display:flex;align-items:center;gap:10px;}
+.logo-text{font-size:16px;font-weight:700;color:#4ac800;letter-spacing:2px;}
+.header-right{display:flex;align-items:center;gap:10px;}
+.header-name{color:rgba(255,255,255,0.65);font-size:13px;}
+.btn-exit{background:none;border:1px solid rgba(255,255,255,0.25);border-radius:8px;padding:6px 12px;color:rgba(255,255,255,0.7);font-size:12px;}
+.owner-tag{background:rgba(74,200,0,0.18);color:#4ac800;border:1px solid rgba(74,200,0,0.4);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;}
+
+/* コンテンツエリア */
+.content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px 16px;padding-bottom:88px;}
+
+/* ボトムナビ */
+.bottom-nav{background:#1a1a1a;border-top:2px solid rgba(74,200,0,0.4);display:flex;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom,0px);}
+.nav-btn{flex:1;background:none;border:none;padding:10px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;color:rgba(255,255,255,0.4);transition:color .18s;}
+.nav-btn.active{color:#4ac800;}
+.nav-icon{font-size:22px;}
+.nav-label{font-size:10px;font-weight:400;letter-spacing:0.5px;}
+.nav-btn.active .nav-label{font-weight:700;}
+.nav-bar{width:20px;height:2px;background:#4ac800;border-radius:2px;margin-top:1px;display:none;}
+.nav-btn.active .nav-bar{display:block;}
+
+/* カード */
+.card{background:#fff;border:1px solid #c8e6b8;border-radius:20px;padding:22px 20px;margin-bottom:14px;}
+.card-sm{background:#fff;border:1px solid #c8e6b8;border-radius:14px;padding:13px 18px;margin-bottom:14px;}
+.sec-label{font-size:12px;color:#7a9a6a;letter-spacing:2px;margin-bottom:16px;}
+
+/* 時計 */
+.clock-card{background:#1a1a1a;border-radius:20px;padding:28px 20px;margin-bottom:16px;text-align:center;box-shadow:0 8px 28px rgba(0,0,0,0.3);}
+.clock-time{font-size:52px;font-weight:600;color:#fff;letter-spacing:2px;line-height:1;}
+.clock-date{color:rgba(255,255,255,0.5);margin-top:8px;font-size:12px;letter-spacing:1.5px;}
+
+/* ボタン */
+.btn{border:none;border-radius:14px;padding:16px 20px;font-weight:600;font-size:16px;width:100%;transition:all .2s;font-family:'Noto Sans JP',sans-serif;}
+.btn:disabled{background:#aaa!important;color:#eee!important;opacity:0.7;}
+.btn-green{background:linear-gradient(135deg,#4ac800,#6de020);color:#ffffff!important;box-shadow:0 4px 16px rgba(74,200,0,0.5);}
+.btn-red{background:linear-gradient(135deg,#cc3300,#ee4400);color:#ffffff!important;box-shadow:0 4px 16px rgba(204,51,0,0.4);}
+.btn-primary{background:linear-gradient(135deg,#4ac800,#6de020);color:#ffffff!important;box-shadow:0 4px 16px rgba(74,200,0,0.4);}
+.btn-dark{background:#4ac800;color:#ffffff!important;border:none;border-radius:10px;padding:10px;width:100%;font-size:14px;font-family:'Noto Sans JP',sans-serif;font-weight:600;}
+
+/* 打刻 */
+.punch-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;}
+.punch-item{background:#f0f8eb;border:1px solid #c8e6b8;border-radius:12px;padding:13px 8px;text-align:center;}
+.punch-item-label{font-size:11px;color:#7a9a6a;letter-spacing:1px;}
+.punch-item-value{font-weight:600;margin-top:5px;font-size:15px;color:#38a000;}
+.pay-box{background:linear-gradient(135deg,rgba(74,200,0,0.12),rgba(109,224,32,0.18));border:1px solid rgba(74,200,0,0.4);border-radius:14px;padding:20px;text-align:center;}
+.pay-label{font-size:11px;color:#7a9a6a;letter-spacing:2px;margin-bottom:8px;}
+.pay-amount{font-weight:700;font-size:32px;color:#38a000;}
+.working-badge{background:rgba(56,160,0,0.1);border:1px solid rgba(74,200,0,0.4);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:#38a000;display:flex;align-items:center;gap:8px;}
+.wage-row{display:flex;justify-content:space-between;align-items:center;}
+.wage-value{font-size:18px;font-weight:600;color:#38a000;}
+
+/* カレンダー */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;}
+.cal-header{font-size:11px;font-weight:600;padding-bottom:8px;}
+.cal-day{border-radius:8px;padding:8px 0;font-size:13px;border:1px solid transparent;background:none;width:100%;font-family:'Noto Sans JP',sans-serif;}
+.cal-day.today{border:2px solid rgba(74,200,0,0.6);font-weight:700;}
+.cal-day.selected{background:#4ac800;color:#fff!important;font-weight:700;}
+.cal-day.has-shift{border-color:rgba(56,160,0,0.6);}
+.shift-dot{width:4px;height:4px;border-radius:50%;background:#38a000;margin:2px auto 0;}
+
+/* 履歴 */
+.history-item{background:#fff;border:1px solid #c8e6b8;border-radius:14px;padding:16px 18px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+.history-date{font-weight:600;color:#38a000;font-size:14px;}
+.history-time{font-size:12px;color:#7a9a6a;margin-top:4px;}
+.history-pay{font-weight:600;color:#38a000;font-size:17px;}
+.tag{display:inline-block;background:rgba(56,160,0,0.15);color:#38a000;border:1px solid rgba(56,160,0,0.4);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;}
+.tag-danger{background:rgba(204,51,0,0.1);color:#cc3300;border-color:rgba(204,51,0,0.3);}
+.empty{text-align:center;padding:60px;color:#7a9a6a;}
+
+/* 管理者 */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+.stat-card{background:#fff;border:1px solid #c8e6b8;border-radius:16px;padding:18px 16px;border-top:3px solid #4ac800;}
+.stat-label{font-size:11px;color:#7a9a6a;letter-spacing:2px;}
+.stat-value{font-size:26px;margin-top:8px;color:#38a000;font-weight:600;display:flex;align-items:baseline;gap:4px;}
+.stat-unit{font-size:13px;font-weight:400;color:#7a9a6a;}
+.total-card{background:#fff;border:1px solid #c8e6b8;border-radius:16px;padding:18px 20px;margin-bottom:20px;border-top:3px solid #4ac800;}
+.staff-card{background:#fff;border:1px solid #c8e6b8;border-radius:14px;padding:16px 18px;margin-bottom:12px;}
+.emp-accordion{background:#fff;border:1.5px solid #c8e6b8;border-radius:16px;margin-bottom:14px;overflow:hidden;}
+.emp-accordion.open{border-color:#4ac800;}
+.emp-header{padding:16px 18px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;}
+.emp-body{background:#f0f8eb;padding:16px 18px;border-top:1px solid #c8e6b8;}
+.emp-record{padding:8px 0;border-bottom:1px solid #c8e6b8;font-size:13px;}
+.added-box{background:#f0fff0;border:2px solid #4ac800;border-radius:16px;padding:20px 18px;margin-bottom:20px;}
+.hint-box{background:rgba(74,200,0,0.1);border:1px solid rgba(74,200,0,0.4);border-radius:10px;padding:12px 14px;margin-bottom:20px;font-size:12px;color:#38a000;}
+
+/* ローディング */
+#loading-screen{background:#f4f9f0;justify-content:center;align-items:center;}
+.loading-text{color:#7a9a6a;font-size:13px;letter-spacing:2px;margin-top:16px;}
+</style>
+</head>
+<body>
+
+<!-- ローディング -->
+<div id="loading-screen" class="screen active">
+  <svg width="64" height="64" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/>
+    <path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5" opacity="0.9"/>
+    <path d="M15 65 Q30 35 50 55 Q70 75 85 45" fill="none" stroke="#fff" stroke-width="2" opacity="0.7"/>
+    <path d="M25 35 Q45 55 55 35 Q65 15 80 35" fill="none" stroke="#fff" stroke-width="2" opacity="0.6"/>
+    <circle cx="30" cy="45" r="4" fill="#fff" opacity="0.8"/>
+    <circle cx="65" cy="38" r="3" fill="#fff" opacity="0.7"/>
+    <circle cx="72" cy="62" r="3.5" fill="#fff" opacity="0.8"/>
+    <circle cx="40" cy="68" r="3" fill="#fff" opacity="0.6"/>
+  </svg>
+  <div class="loading-text">読み込み中...</div>
+</div>
+
+<!-- ログイン -->
+<div id="login-screen" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="64" height="64" viewBox="0 0 100 100" style="display:block;margin:0 auto;">
+        <circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/>
+        <path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5" opacity="0.9"/>
+        <path d="M15 65 Q30 35 50 55 Q70 75 85 45" fill="none" stroke="#fff" stroke-width="2" opacity="0.7"/>
+        <path d="M25 35 Q45 55 55 35 Q65 15 80 35" fill="none" stroke="#fff" stroke-width="2" opacity="0.6"/>
+        <circle cx="30" cy="45" r="4" fill="#fff" opacity="0.8"/>
+        <circle cx="65" cy="38" r="3" fill="#fff" opacity="0.7"/>
+        <circle cx="72" cy="62" r="3.5" fill="#fff" opacity="0.8"/>
+        <circle cx="40" cy="68" r="3" fill="#fff" opacity="0.6"/>
+      </svg>
+      <div class="login-logo-text">HOMUNCULUS</div>
+      <div class="login-logo-sub">ホムンクルス</div>
+    </div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="label">メールアドレス</label>
+      <input class="input" id="login-email" type="email" inputmode="email" autocomplete="email" placeholder="example@email.com">
+      <div class="err-msg" id="login-email-err" style="display:none;"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px;">
+      <label class="label">パスワード</label>
+      <div class="pass-wrap">
+        <input class="input" id="login-pass" type="password" autocomplete="current-password" placeholder="パスワード" style="padding-right:56px;">
+        <button class="pass-toggle" onclick="togglePass('login-pass',this)">表示</button>
+      </div>
+    </div>
+    <div class="err-box" id="login-err" style="display:none;"></div>
+    <button class="btn-login" id="login-btn" onclick="doLogin()">ログイン</button>
+    <div class="divider"></div>
+    <div class="demo-info">
+      <strong>デモアカウント</strong><br>
+      スタッフ：yamada@example.com ／ 1234<br>
+      オーナー：owner@homunculus.com ／ admin
+    </div>
+  </div>
+</div>
+
+<!-- スタッフ：打刻 -->
+<div id="staff-punch-screen" class="screen">
+  <div class="header">
+    <div class="header-logo">
+      <svg width="28" height="28" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/><path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5"/></svg>
+      <span class="logo-text">HOMUNCULUS</span>
+    </div>
+    <div class="header-right">
+      <span class="header-name" id="staff-name-punch"></span>
+      <button class="btn-exit" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="clock-card">
+      <div class="clock-time" id="clock-display">00:00:00</div>
+      <div class="clock-date" id="clock-date"></div>
+    </div>
+    <div class="card">
+      <div class="sec-label">本日の勤務</div>
+      <div id="punch-area"></div>
+    </div>
+    <div class="card-sm">
+      <div class="wage-row">
+        <span style="font-size:13px;color:#3a3a3a;">登録時給</span>
+        <span id="staff-wage" class="wage-value"></span>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-btn active" onclick="showStaffTab('punch',this)">
+      <span class="nav-icon">⏱</span><span class="nav-label">打刻</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showStaffTab('shift',this)">
+      <span class="nav-icon">📅</span><span class="nav-label">シフト</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showStaffTab('history',this)">
+      <span class="nav-icon">📋</span><span class="nav-label">履歴</span><div class="nav-bar"></div>
+    </button>
+  </div>
+</div>
+
+<!-- スタッフ：シフト -->
+<div id="staff-shift-screen" class="screen">
+  <div class="header">
+    <div class="header-logo">
+      <svg width="28" height="28" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/><path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5"/></svg>
+      <span class="logo-text">HOMUNCULUS</span>
+    </div>
+    <div class="header-right">
+      <span class="header-name" id="staff-name-shift"></span>
+      <button class="btn-exit" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="card">
+      <div class="sec-label" id="cal-title"></div>
+      <div class="cal-grid" id="calendar"></div>
+    </div>
+    <div class="card">
+      <div class="sec-label" id="sel-date-label"></div>
+      <div id="shift-registered" style="margin-bottom:8px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+        <div>
+          <label class="label">開始時刻</label>
+          <select class="input" id="shift-start"></select>
+        </div>
+        <div>
+          <label class="label">終了時刻</label>
+          <select class="input" id="shift-end"></select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="save-shift-btn" onclick="saveShift()">シフトを登録する</button>
+    </div>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-btn" onclick="showStaffTab('punch',this)">
+      <span class="nav-icon">⏱</span><span class="nav-label">打刻</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn active" onclick="showStaffTab('shift',this)">
+      <span class="nav-icon">📅</span><span class="nav-label">シフト</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showStaffTab('history',this)">
+      <span class="nav-icon">📋</span><span class="nav-label">履歴</span><div class="nav-bar"></div>
+    </button>
+  </div>
+</div>
+
+<!-- スタッフ：履歴 -->
+<div id="staff-history-screen" class="screen">
+  <div class="header">
+    <div class="header-logo">
+      <svg width="28" height="28" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/><path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5"/></svg>
+      <span class="logo-text">HOMUNCULUS</span>
+    </div>
+    <div class="header-right">
+      <span class="header-name" id="staff-name-history"></span>
+      <button class="btn-exit" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="sec-label">勤務履歴</div>
+    <div id="history-list"></div>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-btn" onclick="showStaffTab('punch',this)">
+      <span class="nav-icon">⏱</span><span class="nav-label">打刻</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showStaffTab('shift',this)">
+      <span class="nav-icon">📅</span><span class="nav-label">シフト</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn active" onclick="showStaffTab('history',this)">
+      <span class="nav-icon">📋</span><span class="nav-label">履歴</span><div class="nav-bar"></div>
+    </button>
+  </div>
+</div>
+
+<!-- オーナー：概要 -->
+<div id="admin-overview-screen" class="screen">
+  <div class="header">
+    <div class="header-logo">
+      <svg width="28" height="28" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/><path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5"/></svg>
+      <span class="logo-text">HOMUNCULUS</span>
+    </div>
+    <div class="header-right">
+      <span class="owner-tag">OWNER</span>
+      <button class="btn-exit" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="stat-grid" id="admin-stats"></div>
+    <div class="total-card">
+      <div class="stat-label">累計支払い</div>
+      <div style="font-size:30px;margin-top:8px;color:#38a000;font-weight:600;" id="admin-total-pay"></div>
+    </div>
+    <div class="sec-label">スタッフ別サマリー</div>
+    <div id="admin-summary"></div>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-btn active" onclick="showAdminTab('overview',this)">
+      <span class="nav-icon">📊</span><span class="nav-label">概要</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showAdminTab('employees',this)">
+      <span class="nav-icon">👥</span><span class="nav-label">従業員管理</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showAdminTab('add',this)">
+      <span class="nav-icon">➕</span><span class="nav-label">新規追加</span><div class="nav-bar"></div>
+    </button>
+  </div>
+</div>
+
+<!-- オーナー：従業員管理 -->
+<div id="admin-employees-screen" class="screen">
+  <div class="header">
+    <div class="header-logo">
+      <svg width="28" height="28" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/><path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5"/></svg>
+      <span class="logo-text">HOMUNCULUS</span>
+    </div>
+    <div class="header-right">
+      <span class="owner-tag">OWNER</span>
+      <button class="btn-exit" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+  <div class="content">
+    <div class="sec-label">従業員一覧</div>
+    <div id="admin-emp-list"></div>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-btn" onclick="showAdminTab('overview',this)">
+      <span class="nav-icon">📊</span><span class="nav-label">概要</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn active" onclick="showAdminTab('employees',this)">
+      <span class="nav-icon">👥</span><span class="nav-label">従業員管理</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showAdminTab('add',this)">
+      <span class="nav-icon">➕</span><span class="nav-label">新規追加</span><div class="nav-bar"></div>
+    </button>
+  </div>
+</div>
+
+<!-- オーナー：新規追加 -->
+<div id="admin-add-screen" class="screen">
+  <div class="header">
+    <div class="header-logo">
+      <svg width="28" height="28" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="#4ac800" stroke="#38a000" stroke-width="2"/><path d="M20 50 Q35 20 50 50 Q65 80 80 50" fill="none" stroke="#fff" stroke-width="2.5"/></svg>
+      <span class="logo-text">HOMUNCULUS</span>
+    </div>
+    <div class="header-right">
+      <span class="owner-tag">OWNER</span>
+      <button class="btn-exit" onclick="doLogout()">退出</button>
+    </div>
+  </div>
+  <div class="content">
+    <div id="added-result" style="display:none;"></div>
+    <div class="card">
+      <div class="sec-label">新規スタッフ追加</div>
+      <div class="form-group">
+        <label class="label">お名前 <span style="color:#cc3300;">*</span></label>
+        <input class="input" id="add-name" type="text" placeholder="山田 太郎">
+      </div>
+      <div class="form-group">
+        <label class="label">メールアドレス <span style="color:#cc3300;">*</span></label>
+        <input class="input" id="add-email" type="email" placeholder="example@email.com">
+      </div>
+      <div class="form-group" style="margin-bottom:20px;">
+        <label class="label">アルバイト単価 / 時間（円） <span style="color:#cc3300;">*</span></label>
+        <input class="input" id="add-wage" type="number" value="1050">
+      </div>
+      <div class="hint-box">💡 登録後、初期パスワードが自動発行されます。スタッフはそのパスワードで初回ログインし、自分でパスワードを変更します。</div>
+      <button class="btn btn-primary" id="add-emp-btn" onclick="addEmployee()">スタッフを追加する</button>
+    </div>
+  </div>
+  <div class="bottom-nav">
+    <button class="nav-btn" onclick="showAdminTab('overview',this)">
+      <span class="nav-icon">📊</span><span class="nav-label">概要</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn" onclick="showAdminTab('employees',this)">
+      <span class="nav-icon">👥</span><span class="nav-label">従業員管理</span><div class="nav-bar"></div>
+    </button>
+    <button class="nav-btn active" onclick="showAdminTab('add',this)">
+      <span class="nav-icon">➕</span><span class="nav-label">新規追加</span><div class="nav-bar"></div>
+    </button>
+  </div>
+</div>
+
+<script>
+// Firebase
+const firebaseConfig = {
+  apiKey: "AIzaSyDmZTOvZLB7-WH6Q0k43dtGz3mEYhBGjSY",
+  authDomain: "homunculus-shift-f0676.firebaseapp.com",
+  databaseURL: "https://homunculus-shift-default-rtdb.firebaseio.com",
+  projectId: "homunculus-shift-f0676",
+  storageBucket: "homunculus-shift-f0676.firebasestorage.app",
+  messagingSenderId: "570442863845",
+  appId: "1:570442863845:web:b495f5f08fa936fe82b00c"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const DB = {
+  get: k => db.ref(k).once('value').then(s=>s.val()),
+  set: (k,v) => db.ref(k).set(v),
+};
+
+const initEmployees = [
+  {id:"e1",name:"山田 太郎",email:"yamada@example.com",password:"1234",hourlyWage:1050,role:"staff",isFirstLogin:false},
+  {id:"e2",name:"鈴木 花子",email:"suzuki@example.com",password:"1234",hourlyWage:1100,role:"staff",isFirstLogin:false},
+  {id:"admin",name:"オーナー",email:"owner@homunculus.com",password:"admin",hourlyWage:0,role:"admin",isFirstLogin:false},
+];
+
+let currentUser = null;
+let clockInterval = null;
+let selectedDate = '';
+
+const sessionLoad = () => { try { return JSON.parse(localStorage.getItem("hom_session")); } catch { return null; } };
+const sessionSave = v => localStorage.setItem("hom_session", JSON.stringify(v));
+const sessionClear = () => localStorage.removeItem("hom_session");
+const fmt = d => new Date(d).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+const diffMin = (a,b) => Math.max(0,Math.round((new Date(b)-new Date(a))/60000));
+const calcPay = (m,w) => Math.floor((m/60)*w);
+const genPassword = () => Math.random().toString(36).slice(2,8).toUpperCase();
+const todayKey = () => new Date().toISOString().split("T")[0];
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function togglePass(id,btn){
+  const i=document.getElementById(id);
+  i.type=i.type==='password'?'text':'password';
+  btn.textContent=i.type==='password'?'表示':'隠す';
+}
+
+// 初期化
+async function init(){
+  show('loading-screen');
+  let emps = await DB.get('employees');
+  if(!emps){ await DB.set('employees',initEmployees); }
+  const saved = sessionLoad();
+  if(saved){
+    const emps2 = await DB.get('employees')||initEmployees;
+    const fresh = emps2.find(e=>e.id===saved.id);
+    if(fresh){ currentUser=fresh; sessionSave(fresh); startApp(); return; }
+  }
+  show('login-screen');
+}
+
+function startApp(){
+  if(currentUser.role==='admin'){
+    renderAdminOverview();
+    show('admin-overview-screen');
+  } else {
+    initStaff();
+    show('staff-punch-screen');
+  }
+}
+
+// ログイン
+async function doLogin(){
+  const email=document.getElementById('login-email').value.trim().replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/　/g,' ');
+  const pass=document.getElementById('login-pass').value;
+  const errEl=document.getElementById('login-err');
+  const emailErrEl=document.getElementById('login-email-err');
+  errEl.style.display='none'; emailErrEl.style.display='none';
+
+  if(!email){emailErrEl.textContent='メールアドレスを入力してください';emailErrEl.style.display='block';return;}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){emailErrEl.textContent='正しい形式で入力してください';emailErrEl.style.display='block';return;}
+  if(!pass){errEl.textContent='パスワードを入力してください';errEl.style.display='block';return;}
+
+  const btn=document.getElementById('login-btn');
+  btn.textContent='確認中...'; btn.disabled=true;
+
+  try{
+    const emps=await DB.get('employees')||initEmployees;
+    const user=emps.find(e=>e.email===email&&e.password===pass);
+    if(!user){errEl.textContent='メールアドレスまたはパスワードが正しくありません';errEl.style.display='block';btn.textContent='ログイン';btn.disabled=false;return;}
+    currentUser=user; sessionSave(user); startApp();
+  }catch(e){
+    errEl.textContent='接続エラーが発生しました。再度お試しください。';errEl.style.display='block';
+  }
+  btn.textContent='ログイン'; btn.disabled=false;
+}
+
+// ログアウト
+function doLogout(){
+  sessionClear(); currentUser=null;
+  if(clockInterval){clearInterval(clockInterval);clockInterval=null;}
+  show('login-screen');
+}
+
+// スタッフタブ切替
+function showStaffTab(tab, btn){
+  if(tab==='punch'){ renderPunch(); show('staff-punch-screen'); }
+  else if(tab==='shift'){ renderCalendar(); show('staff-shift-screen'); }
+  else if(tab==='history'){ renderHistory(); show('staff-history-screen'); }
+}
+
+// オーナータブ切替
+function showAdminTab(tab, btn){
+  if(tab==='overview'){ renderAdminOverview(); show('admin-overview-screen'); }
+  else if(tab==='employees'){ renderAdminEmployees(); show('admin-employees-screen'); }
+  else if(tab==='add'){ show('admin-add-screen'); }
+}
+
+// スタッフ初期化
+function initStaff(){
+  ['punch','shift','history'].forEach(t=>{
+    const el=document.getElementById(`staff-name-${t}`);
+    if(el) el.textContent=currentUser.name;
+  });
+  document.getElementById('staff-wage').textContent=`¥ ${currentUser.hourlyWage.toLocaleString()} / hour`;
+  selectedDate=todayKey();
+  if(clockInterval) clearInterval(clockInterval);
+  clockInterval=setInterval(updateClock,1000);
+  updateClock();
+  renderPunch();
+  initShiftSelect();
+}
+
+function updateClock(){
+  const now=new Date();
+  const d=document.getElementById('clock-display');
+  const dt=document.getElementById('clock-date');
+  if(d) d.textContent=now.toLocaleTimeString('ja-JP');
+  if(dt) dt.textContent=now.toLocaleDateString('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
+}
+
+// 打刻
+async function renderPunch(){
+  const area=document.getElementById('punch-area');
+  if(!area) return;
+  const recs=await DB.get('records')||{};
+  const myRecs=recs[currentUser.id]||[];
+  const today=todayKey();
+  const todayRec=myRecs.find(r=>r.date===today)||null;
+
+  if(!todayRec){
+    area.innerHTML=`<button class="btn btn-green" onclick="clockIn()" id="clock-in-btn" style="font-size:18px;padding:18px;border-radius:16px;">出勤する</button>`;
+  } else if(!todayRec.outTime){
+    area.innerHTML=`
+      <div class="working-badge"><span>✅</span> 出勤中 · ${fmt(todayRec.inTime)} より</div>
+      <button class="btn btn-red" onclick="clockOut()" id="clock-out-btn" style="font-size:18px;padding:18px;border-radius:16px;">退勤する</button>`;
+  } else {
+    area.innerHTML=`
+      <div class="punch-grid">
+        <div class="punch-item"><div class="punch-item-label">出勤</div><div class="punch-item-value">${fmt(todayRec.inTime)}</div></div>
+        <div class="punch-item"><div class="punch-item-label">退勤</div><div class="punch-item-value">${fmt(todayRec.outTime)}</div></div>
+        <div class="punch-item"><div class="punch-item-label">勤務</div><div class="punch-item-value">${Math.floor(todayRec.mins/60)}h${todayRec.mins%60}m</div></div>
+      </div>
+      <div class="pay-box"><div class="pay-label">本日の給与</div><div class="pay-amount">¥ ${todayRec.pay.toLocaleString()}</div></div>`;
+  }
+}
+
+async function clockIn(){
+  const btn=document.getElementById('clock-in-btn');
+  btn.textContent='処理中...'; btn.disabled=true;
+  const recs=await DB.get('records')||{};
+  const rec={id:Date.now(),date:todayKey(),inTime:new Date().toISOString(),outTime:null,mins:null,pay:null};
+  await DB.set('records',{...recs,[currentUser.id]:[...(recs[currentUser.id]||[]),rec]});
+  renderPunch();
+}
+
+async function clockOut(){
+  const btn=document.getElementById('clock-out-btn');
+  btn.textContent='処理中...'; btn.disabled=true;
+  const recs=await DB.get('records')||{};
+  const myRecs=recs[currentUser.id]||[];
+  const tr=myRecs.find(r=>r.date===todayKey()&&!r.outTime);
+  if(!tr){renderPunch();return;}
+  const out=new Date().toISOString();
+  const mins=diffMin(tr.inTime,out);
+  const pay=calcPay(mins,currentUser.hourlyWage);
+  const updated=myRecs.map(r=>r.id===tr.id?{...r,outTime:out,mins,pay}:r);
+  await DB.set('records',{...recs,[currentUser.id]:updated});
+  renderPunch();
+}
+
+// シフト
+function initShiftSelect(){
+  const hours=Array.from({length:13},(_,i)=>`${(12+i).toString().padStart(2,'0')}:00`);
+  ['shift-start','shift-end'].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(sel) sel.innerHTML=hours.map(h=>`<option>${h}</option>`).join('');
+  });
+  const se=document.getElementById('shift-end');
+  if(se) se.value='17:00';
+}
+
+async function renderCalendar(){
+  document.getElementById('staff-name-shift').textContent=currentUser.name;
+  const today=new Date();
+  const yr=today.getFullYear(), mo=today.getMonth();
+  document.getElementById('cal-title').textContent=`${yr}年${mo+1}月 · シフトカレンダー`;
+  const shifts=await DB.get('shifts')||{};
+  const firstDay=new Date(yr,mo,1).getDay();
+  const daysInMonth=new Date(yr,mo+1,0).getDate();
+
+  let html='';
+  ['日','月','火','水','木','金','土'].forEach((d,i)=>{
+    const c=i===0?'#cc3300':i===6?'#38a000':'#7a9a6a';
+    html+=`<div class="cal-header" style="color:${c};">${d}</div>`;
+  });
+  for(let i=0;i<firstDay;i++) html+=`<div></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const dk=`${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const hasShift=!!shifts[`${currentUser.id}_${dk}`];
+    const isToday=d===today.getDate();
+    const isSel=dk===selectedDate;
+    const dow=new Date(yr,mo,d).getDay();
+    let cls='cal-day';
+    if(isSel) cls+=' selected';
+    else if(isToday) cls+=' today';
+    if(hasShift&&!isSel) cls+=' has-shift';
+    const col=isSel?'#fff':dow===0?'#cc3300':dow===6?'#38a000':'#1a1a1a';
+    html+=`<button class="${cls}" style="color:${col};" onclick="selectDate('${dk}')">${d}${hasShift&&!isSel?'<div class="shift-dot"></div>':''}</button>`;
+  }
+  document.getElementById('calendar').innerHTML=html;
+  updateShiftLabel(shifts);
+}
+
+function selectDate(dk){
+  selectedDate=dk;
+  DB.get('shifts').then(shifts=>{ renderCalendar(); });
+}
+
+function updateShiftLabel(shifts){
+  const sk=`${currentUser.id}_${selectedDate}`;
+  const reg=shifts&&shifts[sk];
+  document.getElementById('sel-date-label').textContent=`${selectedDate} のシフト`;
+  const regEl=document.getElementById('shift-registered');
+  if(reg) regEl.innerHTML=`<span class="tag" style="margin-bottom:8px;display:inline-block;">登録済 ${reg.start}〜${reg.end}</span>`;
+  else regEl.innerHTML='';
+}
+
+async function saveShift(){
+  const btn=document.getElementById('save-shift-btn');
+  btn.textContent='保存中...'; btn.disabled=true;
+  const start=document.getElementById('shift-start').value;
+  const end=document.getElementById('shift-end').value;
+  const shifts=await DB.get('shifts')||{};
+  await DB.set('shifts',{...shifts,[`${currentUser.id}_${selectedDate}`]:{start,end}});
+  btn.textContent='シフトを登録する'; btn.disabled=false;
+  alert(`シフト登録完了：${selectedDate} ${start}〜${end}`);
+  renderCalendar();
+}
+
+// 履歴
+async function renderHistory(){
+  document.getElementById('staff-name-history').textContent=currentUser.name;
+  const recs=await DB.get('records')||{};
+  const myRecs=(recs[currentUser.id]||[]).slice().reverse();
+  const el=document.getElementById('history-list');
+  if(!myRecs.length){el.innerHTML=`<div class="empty">まだ記録がありません</div>`;return;}
+  el.innerHTML=myRecs.map(r=>`
+    <div class="history-item">
+      <div>
+        <div class="history-date">${r.date}</div>
+        <div class="history-time">${fmt(r.inTime)} → ${r.outTime?fmt(r.outTime):'勤務中'}${r.mins?` (${Math.floor(r.mins/60)}h${r.mins%60}m)`:''}</div>
+      </div>
+      ${r.pay!=null?`<span class="history-pay">¥${r.pay.toLocaleString()}</span>`:`<span class="tag">勤務中</span>`}
+    </div>`).join('');
+}
+
+// オーナー概要
+async function renderAdminOverview(){
+  const [emps,recs]=await Promise.all([DB.get('employees'),DB.get('records')]);
+  const employees=emps||initEmployees;
+  const records=recs||{};
+  const staffList=employees.filter(e=>e.role==='staff');
+  const empRecs=id=>(records[id]||[]).filter(r=>r.outTime);
+  const totalPay=id=>empRecs(id).reduce((s,r)=>s+(r.pay||0),0);
+  const totalAll=staffList.reduce((s,e)=>s+totalPay(e.id),0);
+  const totalShifts=Object.values(records).flat().filter(r=>r.outTime).length;
+
+  document.getElementById('admin-stats').innerHTML=`
+    <div class="stat-card"><div class="stat-label">スタッフ数</div><div class="stat-value">${staffList.length}<span class="stat-unit">名</span></div></div>
+    <div class="stat-card"><div class="stat-label">累計出勤</div><div class="stat-value">${totalShifts}<span class="stat-unit">件</span></div></div>`;
+  document.getElementById('admin-total-pay').textContent=`¥ ${totalAll.toLocaleString()}`;
+  document.getElementById('admin-summary').innerHTML=staffList.map(e=>`
+    <div class="staff-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div>
+          <div style="font-weight:600;font-size:15px;">${e.name}${e.isFirstLogin===true?` <span class="tag tag-danger">未設定</span>`:''}</div>
+          <div style="font-size:12px;color:#7a9a6a;margin-top:2px;">時給 ¥${e.hourlyWage.toLocaleString()} · 出勤 ${empRecs(e.id).length}回</div>
+        </div>
+        <span style="font-weight:600;color:#38a000;font-size:18px;">¥${totalPay(e.id).toLocaleString()}</span>
+      </div>
+      <button class="btn-dark" onclick="exportCSV('${e.id}')">スプレッドシートで開く</button>
+    </div>`).join('');
+}
+
+// 従業員管理
+async function renderAdminEmployees(){
+  const [emps,recs]=await Promise.all([DB.get('employees'),DB.get('records')]);
+  const employees=emps||initEmployees;
+  const records=recs||{};
+  const staffList=employees.filter(e=>e.role==='staff');
+  const empRecs=id=>(records[id]||[]).filter(r=>r.outTime);
+
+  document.getElementById('admin-emp-list').innerHTML=staffList.map(e=>`
+    <div class="emp-accordion" id="acc-${e.id}">
+      <div class="emp-header" onclick="toggleAcc('${e.id}')">
+        <div>
+          <div style="font-weight:600;font-size:15px;">${e.name}${e.isFirstLogin===true?` <span class="tag tag-danger">未設定</span>`:''}</div>
+          <div style="font-size:12px;color:#7a9a6a;margin-top:2px;">${e.email}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="tag">¥${e.hourlyWage.toLocaleString()}/h</span>
+          <span id="arr-${e.id}" style="color:#7a9a6a;font-size:12px;">▼</span>
+        </div>
+      </div>
+      <div class="emp-body" id="body-${e.id}" style="display:none;">
+        ${empRecs(e.id).length===0?'<div style="color:#7a9a6a;font-size:13px;">勤務記録がありません</div>':
+          empRecs(e.id).slice().reverse().map(r=>`
+            <div class="emp-record">
+              <div style="display:flex;justify-content:space-between;"><span>${r.date}</span><span style="color:#38a000;font-weight:600;">¥${r.pay?.toLocaleString()}</span></div>
+              <div style="color:#7a9a6a;font-size:11px;margin-top:2px;">${fmt(r.inTime)}〜${fmt(r.outTime)}（${Math.floor(r.mins/60)}h${r.mins%60}m）</div>
+            </div>`).join('')}
+        <button class="btn-dark" onclick="exportCSV('${e.id}')" style="margin-top:12px;">スプレッドシートで開く</button>
+      </div>
+    </div>`).join('');
+}
+
+function toggleAcc(id){
+  const body=document.getElementById('body-'+id);
+  const arr=document.getElementById('arr-'+id);
+  const acc=document.getElementById('acc-'+id);
+  if(body.style.display==='none'){body.style.display='block';arr.textContent='▲';acc.classList.add('open');}
+  else{body.style.display='none';arr.textContent='▼';acc.classList.remove('open');}
+}
+
+// CSV出力
+async function exportCSV(id){
+  const [emps,recs]=await Promise.all([DB.get('employees'),DB.get('records')]);
+  const emp=(emps||initEmployees).find(e=>e.id===id);
+  const empRecs=((recs||{})[id]||[]).filter(r=>r.outTime);
+  const rows=[['日付','出勤時刻','退勤時刻','勤務時間(分)','支払い金額(円)']];
+  empRecs.forEach(r=>rows.push([r.date,fmt(r.inTime),fmt(r.outTime),r.mins,r.pay]));
+  const blob=new Blob(['﻿'+rows.map(r=>r.join(',')).join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`勤怠記録_${emp.name}.csv`;a.click();
+  setTimeout(()=>{if(confirm('CSVをダウンロードしました。\nGoogleスプレッドシートで開きますか？'))window.open('https://sheets.new','_blank');},800);
+}
+
+// スタッフ追加
+async function addEmployee(){
+  const name=document.getElementById('add-name').value.trim();
+  const email=document.getElementById('add-email').value.trim();
+  const wage=Number(document.getElementById('add-wage').value);
+  if(!name||!email){alert('名前とメールアドレスは必須です');return;}
+  if(wage<=0){alert('アルバイト単価を正しく入力してください');return;}
+
+  const btn=document.getElementById('add-emp-btn');
+  btn.textContent='登録中...'; btn.disabled=true;
+
+  const emps=await DB.get('employees')||initEmployees;
+  if(emps.find(e=>e.email===email)){alert('このメールアドレスはすでに登録されています');btn.textContent='スタッフを追加する';btn.disabled=false;return;}
+
+  const initPass=genPassword();
+  const emp={id:`e${Date.now()}`,name,email,password:initPass,hourlyWage:wage,role:'staff',isFirstLogin:true};
+  await DB.set('employees',[...emps,emp]);
+
+  document.getElementById('add-name').value='';
+  document.getElementById('add-email').value='';
+  document.getElementById('add-wage').value='1050';
+  btn.textContent='スタッフを追加する'; btn.disabled=false;
+
+  document.getElementById('added-result').style.display='block';
+  document.getElementById('added-result').innerHTML=`
+    <div class="added-box">
+      <div style="font-size:13px;font-weight:700;color:#38a000;margin-bottom:12px;">✅ ${name} を追加しました</div>
+      <div style="font-size:12px;color:#7a9a6a;margin-bottom:8px;">以下をスタッフにLINEで伝えてください：</div>
+      <div style="background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:8px;">
+        <div style="font-size:12px;color:#7a9a6a;margin-bottom:4px;">メールアドレス</div>
+        <div style="font-weight:600;font-size:15px;">${email}</div>
+      </div>
+      <div style="background:#fff;border-radius:10px;padding:14px 16px;margin-bottom:12px;">
+        <div style="font-size:12px;color:#7a9a6a;margin-bottom:4px;">初期パスワード</div>
+        <div style="font-weight:700;font-size:24px;color:#38a000;letter-spacing:4px;">${initPass}</div>
+      </div>
+      <button onclick="document.getElementById('added-result').style.display='none'" style="background:none;border:1px solid #c8e6b8;border-radius:10px;padding:10px;width:100%;font-size:13px;color:#7a9a6a;font-family:'Noto Sans JP',sans-serif;">閉じる</button>
+    </div>`;
+}
+
+init();
+</script>
+</body>
+</html>
