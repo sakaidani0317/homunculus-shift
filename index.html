@@ -858,7 +858,6 @@ async function saveShift(){
   const end=document.getElementById('shift-end').value;
   if(start>=end){ toast('終了時刻は開始時刻より後に設定してください。','error'); return; }
   const btn=document.getElementById('save-shift-btn');
-  const orig=btn.textContent;
   btn.textContent='保存中...'; btn.disabled=true;
   const shifts=await DB.get('shifts')||{};
   await DB.set('shifts',{...shifts,[`${currentUser.id}_${selectedDate}`]:{start,end}});
@@ -885,7 +884,7 @@ async function deleteShift(){
 async function renderHistory(){
   document.getElementById('staff-name-history').textContent=currentUser.name;
   const recs=await DB.get('records')||{};
-  const myRecs=(recs[currentUser.id]||[]).slice().reverse();
+  const myRecs=toRecsArray(recs[currentUser.id]).slice().reverse();
   const el=document.getElementById('history-list');
   if(!myRecs.length){el.innerHTML=`<div class="empty">まだ記録がありません</div>`;return;}
   el.innerHTML=myRecs.map(r=>`
@@ -904,10 +903,10 @@ async function renderAdminOverview(){
   const employees=emps||initEmployees;
   const records=recs||{};
   const staffList=employees.filter(e=>e.role==='staff');
-  const empRecs=id=>(records[id]||[]).filter(r=>r.outTime);
+  const empRecs=id=>toRecsArray(records[id]).filter(r=>r&&r.outTime);
   const totalPay=id=>empRecs(id).reduce((s,r)=>s+(r.pay||0),0);
   const totalAll=staffList.reduce((s,e)=>s+totalPay(e.id),0);
-  const totalShifts=Object.values(records).flat().filter(r=>r.outTime).length;
+  const totalShifts=Object.values(records).flatMap(v=>toRecsArray(v)).filter(r=>r&&r.outTime).length;
 
   document.getElementById('admin-stats').innerHTML=`
     <div class="stat-card"><div class="stat-label">スタッフ数</div><div class="stat-value">${staffList.length}<span class="stat-unit">名</span></div></div>
@@ -932,7 +931,7 @@ async function renderAdminEmployees(){
   const employees=emps||initEmployees;
   const records=recs||{};
   const staffList=employees.filter(e=>e.role==='staff');
-  const empRecs=id=>(records[id]||[]).filter(r=>r.outTime);
+  const empRecs=id=>toRecsArray(records[id]).filter(r=>r&&r.outTime);
 
   document.getElementById('admin-emp-list').innerHTML=staffList.map(e=>`
     <div class="emp-accordion" id="acc-${e.id}">
@@ -975,7 +974,7 @@ function toggleAcc(id){
 async function exportCSV(id){
   const [emps,recs]=await Promise.all([DB.get('employees'),DB.get('records')]);
   const emp=(emps||initEmployees).find(e=>e.id===id);
-  const empRecs=((recs||{})[id]||[]).filter(r=>r.outTime);
+  const empRecs=toRecsArray((recs||{})[id]).filter(r=>r&&r.outTime);
   const rows=[['日付','出勤時刻','退勤時刻','勤務時間(分)','支払い金額(円)']];
   empRecs.forEach(r=>rows.push([r.date,fmt(r.inTime),fmt(r.outTime),r.mins,r.pay]));
   const blob=new Blob(['﻿'+rows.map(r=>r.join(',')).join('\n')],{type:'text/csv;charset=utf-8;'});
