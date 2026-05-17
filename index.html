@@ -20,7 +20,7 @@ button{cursor:pointer;}
 .screen.active{display:flex;flex-direction:column;}
 
 /* ログイン画面 */
-#login-screen{background:linear-gradient(160deg,#1a1a1a 0%,#0f1f0f 60%,#1a2a1a 100%);justify-content:center;align-items:center;padding:24px 20px;}
+#login-screen,#password-setup-screen,#password-change-screen{background:linear-gradient(160deg,#1a1a1a 0%,#0f1f0f 60%,#1a2a1a 100%);justify-content:center;align-items:center;padding:24px 20px;}
 .login-card{width:100%;max-width:420px;background:#fff;border-radius:24px;padding:36px 24px 28px;box-shadow:0 24px 64px rgba(0,0,0,0.4);}
 .login-logo{text-align:center;margin-bottom:24px;}
 .login-logo-text{font-size:24px;font-weight:700;color:#4ac800;letter-spacing:3px;margin-top:10px;}
@@ -187,6 +187,61 @@ button{cursor:pointer;}
   </div>
 </div>
 
+<!-- 初回パスワード設定 -->
+<div id="password-setup-screen" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div style="font-size:40px;margin-bottom:6px;">🔑</div>
+      <div class="login-logo-text" style="font-size:18px;letter-spacing:2px;">初回パスワード設定</div>
+      <div class="login-logo-sub" style="margin-top:8px;letter-spacing:1px;" id="setup-welcome"></div>
+    </div>
+    <div class="divider"></div>
+    <div style="font-size:12px;color:#7a9a6a;line-height:1.7;margin-bottom:16px;">セキュリティ向上のため、初期パスワードから新しいパスワードに変更してください。<br>変更しないとアプリを使えません。</div>
+    <div class="form-group">
+      <label class="label">新しいパスワード（4文字以上）</label>
+      <div class="pass-wrap">
+        <input class="input" id="setup-new" type="password" autocomplete="new-password" style="padding-right:56px;">
+        <button class="pass-toggle" onclick="togglePass('setup-new',this)">表示</button>
+      </div>
+    </div>
+    <div class="form-group" style="margin-bottom:20px;">
+      <label class="label">新しいパスワード（確認用）</label>
+      <input class="input" id="setup-confirm" type="password" autocomplete="new-password">
+    </div>
+    <div class="err-box" id="setup-err" style="display:none;"></div>
+    <button class="btn-login" id="setup-btn" onclick="setupPassword()">設定する</button>
+  </div>
+</div>
+
+<!-- パスワード変更 -->
+<div id="password-change-screen" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div style="font-size:40px;margin-bottom:6px;">🔑</div>
+      <div class="login-logo-text" style="font-size:18px;letter-spacing:2px;">パスワード変更</div>
+    </div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="label">現在のパスワード</label>
+      <div class="pass-wrap">
+        <input class="input" id="ch-current" type="password" autocomplete="current-password" style="padding-right:56px;">
+        <button class="pass-toggle" onclick="togglePass('ch-current',this)">表示</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="label">新しいパスワード（4文字以上）</label>
+      <input class="input" id="ch-new" type="password" autocomplete="new-password">
+    </div>
+    <div class="form-group" style="margin-bottom:20px;">
+      <label class="label">新しいパスワード（確認用）</label>
+      <input class="input" id="ch-confirm" type="password" autocomplete="new-password">
+    </div>
+    <div class="err-box" id="ch-err" style="display:none;"></div>
+    <button class="btn-login" id="ch-btn" onclick="savePasswordChange()">変更する</button>
+    <button style="width:100%;background:none;border:1.5px solid #c8e6b8;border-radius:14px;padding:14px;color:#7a9a6a;font-size:14px;font-family:'Noto Sans JP',sans-serif;margin-top:10px;cursor:pointer;" onclick="exitPasswordChange()">キャンセル</button>
+  </div>
+</div>
+
 <!-- スタッフ：打刻 -->
 <div id="staff-punch-screen" class="screen">
   <div class="header">
@@ -213,6 +268,9 @@ button{cursor:pointer;}
         <span style="font-size:13px;color:#3a3a3a;">登録時給</span>
         <span id="staff-wage" class="wage-value"></span>
       </div>
+    </div>
+    <div class="card-sm" style="margin-bottom:0;">
+      <button onclick="showPasswordChange()" style="background:none;border:none;color:#38a000;font-size:14px;font-weight:600;padding:6px;width:100%;text-align:left;font-family:'Noto Sans JP',sans-serif;cursor:pointer;">🔑 パスワードを変更する</button>
     </div>
   </div>
   <div class="bottom-nav">
@@ -323,6 +381,9 @@ button{cursor:pointer;}
     </div>
     <div class="sec-label">スタッフ別サマリー</div>
     <div id="admin-summary"></div>
+    <div class="card-sm" style="margin-top:14px;">
+      <button onclick="showPasswordChange()" style="background:none;border:none;color:#38a000;font-size:14px;font-weight:600;padding:6px;width:100%;text-align:left;font-family:'Noto Sans JP',sans-serif;cursor:pointer;">🔑 パスワードを変更する</button>
+    </div>
   </div>
   <div class="bottom-nav">
     <button class="nav-btn active" onclick="showAdminTab('overview',this)">
@@ -485,6 +546,14 @@ async function init(){
 }
 
 function startApp(){
+  if(currentUser.isFirstLogin===true){
+    document.getElementById('setup-welcome').textContent=`ようこそ、${currentUser.name} さん`;
+    document.getElementById('setup-new').value='';
+    document.getElementById('setup-confirm').value='';
+    document.getElementById('setup-err').style.display='none';
+    show('password-setup-screen');
+    return;
+  }
   if(currentUser.role==='admin'){
     renderAdminOverview();
     show('admin-overview-screen');
@@ -860,6 +929,84 @@ async function resetDemoData(){
   }catch(e){
     alert('リセット中にエラーが発生しました。もう一度お試しください。');
     btn.textContent='デモデータにリセットする'; btn.disabled=false;
+  }
+}
+
+// パスワード初回設定
+async function setupPassword(){
+  const np=document.getElementById('setup-new').value;
+  const cp=document.getElementById('setup-confirm').value;
+  const errEl=document.getElementById('setup-err');
+  errEl.style.display='none';
+  if(np.length<4){ errEl.textContent='パスワードは4文字以上で入力してください'; errEl.style.display='block'; return; }
+  if(np!==cp){ errEl.textContent='確認用パスワードが一致しません'; errEl.style.display='block'; return; }
+  const btn=document.getElementById('setup-btn');
+  btn.textContent='設定中...'; btn.disabled=true;
+  try{
+    const emps=await DB.get('employees')||initEmployees;
+    const updated=emps.map(e=>e&&e.id===currentUser.id?{...e,password:np,isFirstLogin:false}:e);
+    await DB.set('employees',updated);
+    currentUser={...currentUser,password:np,isFirstLogin:false};
+    sessionSave(currentUser);
+    alert('パスワードを設定しました。');
+    btn.textContent='設定する'; btn.disabled=false;
+    startApp();
+  }catch(e){
+    errEl.textContent='保存に失敗しました。もう一度お試しください。'; errEl.style.display='block';
+    btn.textContent='設定する'; btn.disabled=false;
+  }
+}
+
+// パスワード変更画面を開く
+function showPasswordChange(){
+  document.getElementById('ch-current').value='';
+  document.getElementById('ch-new').value='';
+  document.getElementById('ch-confirm').value='';
+  document.getElementById('ch-err').style.display='none';
+  show('password-change-screen');
+}
+
+// パスワード変更画面から戻る
+function exitPasswordChange(){
+  if(currentUser&&currentUser.role==='admin'){
+    renderAdminOverview();
+    show('admin-overview-screen');
+  } else {
+    renderPunch();
+    show('staff-punch-screen');
+  }
+}
+
+// パスワード変更を保存
+async function savePasswordChange(){
+  const cur=document.getElementById('ch-current').value;
+  const np=document.getElementById('ch-new').value;
+  const cp=document.getElementById('ch-confirm').value;
+  const errEl=document.getElementById('ch-err');
+  errEl.style.display='none';
+  if(!cur){ errEl.textContent='現在のパスワードを入力してください'; errEl.style.display='block'; return; }
+  if(np.length<4){ errEl.textContent='新しいパスワードは4文字以上で入力してください'; errEl.style.display='block'; return; }
+  if(np!==cp){ errEl.textContent='確認用パスワードが一致しません'; errEl.style.display='block'; return; }
+  if(cur===np){ errEl.textContent='新しいパスワードは現在のパスワードと別のものにしてください'; errEl.style.display='block'; return; }
+  const btn=document.getElementById('ch-btn');
+  btn.textContent='変更中...'; btn.disabled=true;
+  try{
+    const emps=await DB.get('employees')||initEmployees;
+    const me=emps.find(e=>e&&e.id===currentUser.id);
+    if(!me||me.password!==cur){
+      errEl.textContent='現在のパスワードが正しくありません'; errEl.style.display='block';
+      btn.textContent='変更する'; btn.disabled=false; return;
+    }
+    const updated=emps.map(e=>e&&e.id===currentUser.id?{...e,password:np,isFirstLogin:false}:e);
+    await DB.set('employees',updated);
+    currentUser={...currentUser,password:np,isFirstLogin:false};
+    sessionSave(currentUser);
+    alert('パスワードを変更しました。');
+    btn.textContent='変更する'; btn.disabled=false;
+    exitPasswordChange();
+  }catch(e){
+    errEl.textContent='保存に失敗しました。もう一度お試しください。'; errEl.style.display='block';
+    btn.textContent='変更する'; btn.disabled=false;
   }
 }
 
