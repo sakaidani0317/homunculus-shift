@@ -300,8 +300,13 @@ button{cursor:pointer;}
   </div>
   <div class="content">
     <div class="card">
-      <div class="sec-label" id="cal-title"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px;">
+        <button onclick="changeMonth(-1)" id="prev-month-btn" style="background:#fff;border:1.5px solid #c8e6b8;border-radius:10px;width:38px;height:38px;color:#38a000;font-size:18px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;flex-shrink:0;">‹</button>
+        <div id="cal-title" style="font-size:12px;color:#7a9a6a;letter-spacing:2px;flex:1;text-align:center;"></div>
+        <button onclick="changeMonth(1)" id="next-month-btn" style="background:#fff;border:1.5px solid #c8e6b8;border-radius:10px;width:38px;height:38px;color:#38a000;font-size:18px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;flex-shrink:0;">›</button>
+      </div>
       <div class="cal-grid" id="calendar"></div>
+      <button onclick="goToday()" id="today-btn" style="background:none;border:none;color:#38a000;font-size:12px;font-weight:600;padding:10px 6px 0;width:100%;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">今日へ戻る</button>
     </div>
     <div class="card">
       <div class="sec-label" id="sel-date-label"></div>
@@ -317,6 +322,7 @@ button{cursor:pointer;}
         </div>
       </div>
       <button class="btn btn-primary" id="save-shift-btn" onclick="saveShift()">シフトを登録する</button>
+      <button class="btn" id="delete-shift-btn" onclick="deleteShift()" style="background:#fff;border:1.5px solid #cc3300;color:#cc3300;margin-top:10px;display:none;">このシフトを削除する</button>
     </div>
   </div>
   <div class="bottom-nav">
@@ -507,6 +513,8 @@ const initEmployees = [
 let currentUser = null;
 let clockInterval = null;
 let selectedDate = '';
+let viewYear = new Date().getFullYear();
+let viewMonth = new Date().getMonth();
 
 const sessionLoad = () => { try { return JSON.parse(localStorage.getItem("hom_session")); } catch { return null; } };
 const sessionSave = v => localStorage.setItem("hom_session", JSON.stringify(v));
@@ -617,6 +625,9 @@ function initStaff(){
     if(el) el.textContent=currentUser.name;
   });
   document.getElementById('staff-wage').textContent=`¥ ${currentUser.hourlyWage.toLocaleString()} / hour`;
+  const td=new Date();
+  viewYear=td.getFullYear();
+  viewMonth=td.getMonth();
   selectedDate=todayKey();
   if(clockInterval) clearInterval(clockInterval);
   clockInterval=setInterval(updateClock,1000);
@@ -717,10 +728,30 @@ function initShiftSelect(){
   if(se) se.value='17:00';
 }
 
+function changeMonth(delta){
+  viewMonth+=delta;
+  if(viewMonth<0){ viewMonth=11; viewYear--; }
+  else if(viewMonth>11){ viewMonth=0; viewYear++; }
+  const oldDay=parseInt(selectedDate.split('-')[2])||1;
+  const daysInNew=new Date(viewYear,viewMonth+1,0).getDate();
+  const newDay=Math.min(oldDay,daysInNew);
+  selectedDate=`${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(newDay).padStart(2,'0')}`;
+  renderCalendar();
+}
+
+function goToday(){
+  const td=new Date();
+  viewYear=td.getFullYear();
+  viewMonth=td.getMonth();
+  selectedDate=todayKey();
+  renderCalendar();
+}
+
 async function renderCalendar(){
   document.getElementById('staff-name-shift').textContent=currentUser.name;
   const today=new Date();
-  const yr=today.getFullYear(), mo=today.getMonth();
+  const todayY=today.getFullYear(), todayM=today.getMonth(), todayD=today.getDate();
+  const yr=viewYear, mo=viewMonth;
   document.getElementById('cal-title').textContent=`${yr}年${mo+1}月 · シフトカレンダー`;
   const shifts=await DB.get('shifts')||{};
   const firstDay=new Date(yr,mo,1).getDay();
@@ -735,7 +766,7 @@ async function renderCalendar(){
   for(let d=1;d<=daysInMonth;d++){
     const dk=`${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const hasShift=!!shifts[`${currentUser.id}_${dk}`];
-    const isToday=d===today.getDate();
+    const isToday=d===todayD&&mo===todayM&&yr===todayY;
     const isSel=dk===selectedDate;
     const dow=new Date(yr,mo,d).getDay();
     let cls='cal-day';
@@ -751,7 +782,7 @@ async function renderCalendar(){
 
 function selectDate(dk){
   selectedDate=dk;
-  DB.get('shifts').then(shifts=>{ renderCalendar(); });
+  renderCalendar();
 }
 
 function updateShiftLabel(shifts){
@@ -759,8 +790,21 @@ function updateShiftLabel(shifts){
   const reg=shifts&&shifts[sk];
   document.getElementById('sel-date-label').textContent=`${selectedDate} のシフト`;
   const regEl=document.getElementById('shift-registered');
-  if(reg) regEl.innerHTML=`<span class="tag" style="margin-bottom:8px;display:inline-block;">登録済 ${reg.start}〜${reg.end}</span>`;
-  else regEl.innerHTML='';
+  const saveBtn=document.getElementById('save-shift-btn');
+  const delBtn=document.getElementById('delete-shift-btn');
+  const ss=document.getElementById('shift-start');
+  const se=document.getElementById('shift-end');
+  if(reg){
+    regEl.innerHTML=`<span class="tag" style="margin-bottom:8px;display:inline-block;">登録済 ${reg.start}〜${reg.end}</span>`;
+    if(ss) ss.value=reg.start;
+    if(se) se.value=reg.end;
+    if(saveBtn) saveBtn.textContent='シフトを更新する';
+    if(delBtn) delBtn.style.display='block';
+  } else {
+    regEl.innerHTML='';
+    if(saveBtn) saveBtn.textContent='シフトを登録する';
+    if(delBtn) delBtn.style.display='none';
+  }
 }
 
 async function saveShift(){
@@ -768,11 +812,25 @@ async function saveShift(){
   const end=document.getElementById('shift-end').value;
   if(start>=end){ alert('終了時刻は開始時刻より後に設定してください。'); return; }
   const btn=document.getElementById('save-shift-btn');
+  const orig=btn.textContent;
   btn.textContent='保存中...'; btn.disabled=true;
   const shifts=await DB.get('shifts')||{};
   await DB.set('shifts',{...shifts,[`${currentUser.id}_${selectedDate}`]:{start,end}});
-  btn.textContent='シフトを登録する'; btn.disabled=false;
-  alert(`シフト登録完了：${selectedDate} ${start}〜${end}`);
+  btn.disabled=false;
+  alert(`シフト保存完了：${selectedDate} ${start}〜${end}`);
+  renderCalendar();
+}
+
+async function deleteShift(){
+  if(!confirm(`${selectedDate} のシフトを削除しますか？`)) return;
+  const btn=document.getElementById('delete-shift-btn');
+  btn.textContent='削除中...'; btn.disabled=true;
+  const shifts=await DB.get('shifts')||{};
+  const key=`${currentUser.id}_${selectedDate}`;
+  const next={...shifts};
+  delete next[key];
+  await DB.set('shifts',next);
+  btn.textContent='このシフトを削除する'; btn.disabled=false;
   renderCalendar();
 }
 
