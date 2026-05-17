@@ -127,9 +127,16 @@ button{cursor:pointer;}
 /* ローディング */
 #loading-screen{background:#f4f9f0;justify-content:center;align-items:center;}
 .loading-text{color:#7a9a6a;font-size:13px;letter-spacing:2px;margin-top:16px;}
+
+/* トースト通知 */
+#toast{position:fixed;top:80px;left:50%;transform:translateX(-50%) translateY(-16px);background:rgba(56,160,0,0.95);color:#fff;padding:13px 22px;border-radius:12px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 6px 22px rgba(0,0,0,0.25);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;max-width:calc(100% - 40px);text-align:center;white-space:pre-line;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.error{background:rgba(204,51,0,0.95);}
 </style>
 </head>
 <body>
+
+<div id="toast"></div>
 
 <!-- ローディング -->
 <div id="loading-screen" class="screen active">
@@ -561,6 +568,17 @@ function show(id){
   document.getElementById(id).classList.add('active');
 }
 
+let _toastT=null;
+function toast(msg,type){
+  const el=document.getElementById('toast');
+  if(!el) return;
+  el.textContent=msg;
+  el.classList.toggle('error',type==='error');
+  el.classList.add('show');
+  if(_toastT) clearTimeout(_toastT);
+  _toastT=setTimeout(()=>el.classList.remove('show'),3000);
+}
+
 function togglePass(id,btn){
   const i=document.getElementById(id);
   i.type=i.type==='password'?'text':'password';
@@ -652,7 +670,7 @@ function initStaff(){
     const el=document.getElementById(`staff-name-${t}`);
     if(el) el.textContent=currentUser.name;
   });
-  document.getElementById('staff-wage').textContent=`¥ ${currentUser.hourlyWage.toLocaleString()} / hour`;
+  document.getElementById('staff-wage').textContent=`¥ ${currentUser.hourlyWage.toLocaleString()} / 時`;
   const td=new Date();
   viewYear=td.getFullYear();
   viewMonth=td.getMonth();
@@ -714,9 +732,9 @@ async function clockIn(){
   btn.textContent='処理中...'; btn.disabled=true;
   const recs=await DB.get('records')||{};
   const myRecs=toRecsArray(recs[currentUser.id]);
-  if(myRecs.some(r=>r&&!r.outTime)){ alert('すでに出勤中の記録があります。先に退勤してください。'); renderPunch(); return; }
+  if(myRecs.some(r=>r&&!r.outTime)){ toast('すでに出勤中の記録があります。先に退勤してください。','error'); renderPunch(); return; }
   const today=todayKey();
-  if(myRecs.some(r=>r&&r.date===today&&r.outTime)){ alert('本日はすでに退勤済みです。同日内の再出勤はできません。'); renderPunch(); return; }
+  if(myRecs.some(r=>r&&r.date===today&&r.outTime)){ toast('本日はすでに退勤済みです。同日内の再出勤はできません。','error'); renderPunch(); return; }
   const rec={id:Date.now(),date:today,inTime:new Date().toISOString(),outTime:null,mins:null,pay:null};
   await DB.set('records',{...recs,[currentUser.id]:[...myRecs,rec]});
   renderPunch();
@@ -838,14 +856,14 @@ function updateShiftLabel(shifts){
 async function saveShift(){
   const start=document.getElementById('shift-start').value;
   const end=document.getElementById('shift-end').value;
-  if(start>=end){ alert('終了時刻は開始時刻より後に設定してください。'); return; }
+  if(start>=end){ toast('終了時刻は開始時刻より後に設定してください。','error'); return; }
   const btn=document.getElementById('save-shift-btn');
   const orig=btn.textContent;
   btn.textContent='保存中...'; btn.disabled=true;
   const shifts=await DB.get('shifts')||{};
   await DB.set('shifts',{...shifts,[`${currentUser.id}_${selectedDate}`]:{start,end}});
   btn.disabled=false;
-  alert(`シフト保存完了：${selectedDate} ${start}〜${end}`);
+  toast(`シフト保存完了：${selectedDate} ${start}〜${end}`);
   renderCalendar();
 }
 
@@ -859,6 +877,7 @@ async function deleteShift(){
   delete next[key];
   await DB.set('shifts',next);
   btn.textContent='このシフトを削除する'; btn.disabled=false;
+  toast('シフトを削除しました');
   renderCalendar();
 }
 
@@ -923,7 +942,7 @@ async function renderAdminEmployees(){
           <div style="font-size:12px;color:#7a9a6a;margin-top:2px;">${e.email}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <span class="tag">¥${e.hourlyWage.toLocaleString()}/h</span>
+          <span class="tag">¥${e.hourlyWage.toLocaleString()}/時</span>
           <span id="arr-${e.id}" style="color:#7a9a6a;font-size:12px;">▼</span>
         </div>
       </div>
@@ -970,15 +989,15 @@ async function addEmployee(){
   const name=document.getElementById('add-name').value.trim();
   const email=document.getElementById('add-email').value.trim();
   const wage=Number(document.getElementById('add-wage').value);
-  if(!name||!email){alert('名前とメールアドレスは必須です');return;}
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){alert('メールアドレスの形式が正しくありません');return;}
-  if(wage<=0){alert('アルバイト単価を正しく入力してください');return;}
+  if(!name||!email){toast('名前とメールアドレスは必須です','error');return;}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){toast('メールアドレスの形式が正しくありません','error');return;}
+  if(wage<=0){toast('アルバイト単価を正しく入力してください','error');return;}
 
   const btn=document.getElementById('add-emp-btn');
   btn.textContent='登録中...'; btn.disabled=true;
 
   const emps=await DB.get('employees')||initEmployees;
-  if(emps.find(e=>e.email===email)){alert('このメールアドレスはすでに登録されています');btn.textContent='スタッフを追加する';btn.disabled=false;return;}
+  if(emps.find(e=>e.email===email)){toast('このメールアドレスはすでに登録されています','error');btn.textContent='スタッフを追加する';btn.disabled=false;return;}
 
   const initPass=genPassword();
   const emp={id:`e${Date.now()}`,name,email,password:initPass,hourlyWage:wage,role:'staff',isFirstLogin:true};
@@ -1010,7 +1029,7 @@ async function addEmployee(){
 async function openEmployeeEdit(id){
   const emps=await DB.get('employees')||initEmployees;
   const emp=emps.find(e=>e&&e.id===id);
-  if(!emp){ alert('スタッフが見つかりません'); return; }
+  if(!emp){ toast('スタッフが見つかりません','error'); return; }
   editingEmployeeId=id;
   document.getElementById('edit-target').textContent=`${emp.name} さん`;
   document.getElementById('edit-name').value=emp.name;
@@ -1045,7 +1064,7 @@ async function saveEmployeeEdit(){
     }
     const updated=emps.map(e=>e&&e.id===editingEmployeeId?{...e,name,email,hourlyWage:wage}:e);
     await DB.set('employees',updated);
-    alert('スタッフ情報を更新しました。');
+    toast('スタッフ情報を更新しました');
     btn.textContent='保存する'; btn.disabled=false;
     exitEmployeeEdit();
   }catch(e){
@@ -1058,7 +1077,7 @@ async function saveEmployeeEdit(){
 async function reissuePassword(id){
   const emps=await DB.get('employees')||initEmployees;
   const emp=emps.find(e=>e&&e.id===id);
-  if(!emp){ alert('スタッフが見つかりません'); return; }
+  if(!emp){ toast('スタッフが見つかりません','error'); return; }
   if(!confirm(`${emp.name} さんのパスワードを再発行しますか？\n\n新しい初期パスワードが発行され、次回ログイン時にスタッフ本人がパスワードを設定し直します。`)) return;
   const newPass=genPassword();
   const updated=emps.map(e=>e&&e.id===id?{...e,password:newPass,isFirstLogin:true}:e);
@@ -1071,7 +1090,7 @@ async function reissuePassword(id){
 async function deleteEmployee(id){
   const emps=await DB.get('employees')||initEmployees;
   const emp=emps.find(e=>e&&e.id===id);
-  if(!emp){ alert('スタッフが見つかりません'); return; }
+  if(!emp){ toast('スタッフが見つかりません','error'); return; }
   if(!confirm(`${emp.name} さんを削除しますか？\n\nこのスタッフの勤務記録・シフトもすべて削除されます。\n（必要なら先にCSV出力で記録を保存してください）\n\nこの操作は元に戻せません。`)) return;
   const updatedEmps=emps.filter(e=>e&&e.id!==id);
   const recs=await DB.get('records')||{};
@@ -1083,7 +1102,7 @@ async function deleteEmployee(id){
   await DB.set('employees',updatedEmps);
   await DB.set('records',updatedRecs);
   await DB.set('shifts',updatedShifts);
-  alert(`${emp.name} さんを削除しました。`);
+  toast(`${emp.name} さんを削除しました`);
   renderAdminEmployees();
 }
 
@@ -1121,7 +1140,7 @@ async function setupPassword(){
     await DB.set('employees',updated);
     currentUser={...currentUser,password:np,isFirstLogin:false};
     sessionSave(currentUser);
-    alert('パスワードを設定しました。');
+    toast('パスワードを設定しました');
     btn.textContent='設定する'; btn.disabled=false;
     startApp();
   }catch(e){
@@ -1174,7 +1193,7 @@ async function savePasswordChange(){
     await DB.set('employees',updated);
     currentUser={...currentUser,password:np,isFirstLogin:false};
     sessionSave(currentUser);
-    alert('パスワードを変更しました。');
+    toast('パスワードを変更しました');
     btn.textContent='変更する'; btn.disabled=false;
     exitPasswordChange();
   }catch(e){
