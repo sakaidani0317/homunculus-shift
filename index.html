@@ -454,7 +454,10 @@ const fmt = d => new Date(d).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"
 const diffMin = (a,b) => Math.max(0,Math.round((new Date(b)-new Date(a))/60000));
 const calcPay = (m,w) => Math.floor((m/60)*w);
 const genPassword = () => Math.random().toString(36).slice(2,8).toUpperCase();
-const todayKey = () => new Date().toISOString().split("T")[0];
+const todayKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
 
 function show(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -562,13 +565,17 @@ function updateClock(){
 }
 
 // 打刻
+function toRecsArray(v){ return Array.isArray(v) ? v : (v && typeof v==='object' ? Object.values(v) : []); }
+
 async function renderPunch(){
   const area=document.getElementById('punch-area');
   if(!area) return;
   const recs=await DB.get('records')||{};
-  const myRecs=recs[currentUser.id]||[];
+  const myRecs=toRecsArray(recs[currentUser.id]);
   const today=todayKey();
-  const todayRec=myRecs.find(r=>r.date===today)||null;
+  const inProgress=myRecs.find(r=>r&&!r.outTime);
+  const todayCompleted=myRecs.filter(r=>r&&r.date===today&&r.outTime).slice(-1)[0];
+  const todayRec=inProgress||todayCompleted||null;
 
   if(!todayRec){
     area.innerHTML=`<button class="btn btn-green" onclick="clockIn()" id="clock-in-btn" style="font-size:18px;padding:18px;border-radius:16px;">出勤する</button>`;
@@ -591,8 +598,10 @@ async function clockIn(){
   const btn=document.getElementById('clock-in-btn');
   btn.textContent='処理中...'; btn.disabled=true;
   const recs=await DB.get('records')||{};
+  const myRecs=toRecsArray(recs[currentUser.id]);
+  if(myRecs.some(r=>r&&!r.outTime)){ renderPunch(); return; }
   const rec={id:Date.now(),date:todayKey(),inTime:new Date().toISOString(),outTime:null,mins:null,pay:null};
-  await DB.set('records',{...recs,[currentUser.id]:[...(recs[currentUser.id]||[]),rec]});
+  await DB.set('records',{...recs,[currentUser.id]:[...myRecs,rec]});
   renderPunch();
 }
 
@@ -600,24 +609,26 @@ async function clockOut(){
   const btn=document.getElementById('clock-out-btn');
   btn.textContent='処理中...'; btn.disabled=true;
   const recs=await DB.get('records')||{};
-  const myRecs=recs[currentUser.id]||[];
-  const tr=myRecs.find(r=>r.date===todayKey()&&!r.outTime);
+  const myRecs=toRecsArray(recs[currentUser.id]);
+  const tr=myRecs.find(r=>r&&!r.outTime);
   if(!tr){renderPunch();return;}
   const out=new Date().toISOString();
   const mins=diffMin(tr.inTime,out);
   const pay=calcPay(mins,currentUser.hourlyWage);
-  const updated=myRecs.map(r=>r.id===tr.id?{...r,outTime:out,mins,pay}:r);
+  const updated=myRecs.map(r=>r&&r.id===tr.id?{...r,outTime:out,mins,pay}:r);
   await DB.set('records',{...recs,[currentUser.id]:updated});
   renderPunch();
 }
 
 // シフト
 function initShiftSelect(){
-  const hours=Array.from({length:13},(_,i)=>`${(12+i).toString().padStart(2,'0')}:00`);
+  const hours=Array.from({length:25},(_,i)=>`${i.toString().padStart(2,'0')}:00`);
   ['shift-start','shift-end'].forEach(id=>{
     const sel=document.getElementById(id);
     if(sel) sel.innerHTML=hours.map(h=>`<option>${h}</option>`).join('');
   });
+  const ss=document.getElementById('shift-start');
+  if(ss) ss.value='09:00';
   const se=document.getElementById('shift-end');
   if(se) se.value='17:00';
 }
