@@ -20,7 +20,7 @@ button{cursor:pointer;}
 .screen.active{display:flex;flex-direction:column;}
 
 /* ログイン画面 */
-#login-screen,#password-setup-screen,#password-change-screen{background:linear-gradient(160deg,#1a1a1a 0%,#0f1f0f 60%,#1a2a1a 100%);justify-content:center;align-items:center;padding:24px 20px;}
+#login-screen,#password-setup-screen,#password-change-screen,#employee-edit-screen{background:linear-gradient(160deg,#1a1a1a 0%,#0f1f0f 60%,#1a2a1a 100%);justify-content:center;align-items:center;padding:24px 20px;}
 .login-card{width:100%;max-width:420px;background:#fff;border-radius:24px;padding:36px 24px 28px;box-shadow:0 24px 64px rgba(0,0,0,0.4);}
 .login-logo{text-align:center;margin-bottom:24px;}
 .login-logo-text{font-size:24px;font-weight:700;color:#4ac800;letter-spacing:3px;margin-top:10px;}
@@ -239,6 +239,33 @@ button{cursor:pointer;}
     <div class="err-box" id="ch-err" style="display:none;"></div>
     <button class="btn-login" id="ch-btn" onclick="savePasswordChange()">変更する</button>
     <button style="width:100%;background:none;border:1.5px solid #c8e6b8;border-radius:14px;padding:14px;color:#7a9a6a;font-size:14px;font-family:'Noto Sans JP',sans-serif;margin-top:10px;cursor:pointer;" onclick="exitPasswordChange()">キャンセル</button>
+  </div>
+</div>
+
+<!-- スタッフ編集 -->
+<div id="employee-edit-screen" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div style="font-size:40px;margin-bottom:6px;">✏️</div>
+      <div class="login-logo-text" style="font-size:18px;letter-spacing:2px;">スタッフ情報の編集</div>
+      <div class="login-logo-sub" style="margin-top:8px;letter-spacing:1px;" id="edit-target"></div>
+    </div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="label">お名前</label>
+      <input class="input" id="edit-name" type="text">
+    </div>
+    <div class="form-group">
+      <label class="label">メールアドレス</label>
+      <input class="input" id="edit-email" type="email" inputmode="email">
+    </div>
+    <div class="form-group" style="margin-bottom:20px;">
+      <label class="label">時給（円）</label>
+      <input class="input" id="edit-wage" type="number">
+    </div>
+    <div class="err-box" id="edit-err" style="display:none;"></div>
+    <button class="btn-login" id="edit-save-btn" onclick="saveEmployeeEdit()">保存する</button>
+    <button style="width:100%;background:none;border:1.5px solid #c8e6b8;border-radius:14px;padding:14px;color:#7a9a6a;font-size:14px;font-family:'Noto Sans JP',sans-serif;margin-top:10px;cursor:pointer;" onclick="exitEmployeeEdit()">キャンセル</button>
   </div>
 </div>
 
@@ -515,6 +542,7 @@ let clockInterval = null;
 let selectedDate = '';
 let viewYear = new Date().getFullYear();
 let viewMonth = new Date().getMonth();
+let editingEmployeeId = null;
 
 const sessionLoad = () => { try { return JSON.parse(localStorage.getItem("hom_session")); } catch { return null; } };
 const sessionSave = v => localStorage.setItem("hom_session", JSON.stringify(v));
@@ -907,6 +935,11 @@ async function renderAdminEmployees(){
               <div style="color:#7a9a6a;font-size:11px;margin-top:2px;">${fmt(r.inTime)}〜${fmt(r.outTime)}（${Math.floor(r.mins/60)}h${r.mins%60}m）</div>
             </div>`).join('')}
         <button class="btn-dark" onclick="exportCSV('${e.id}')" style="margin-top:12px;">スプレッドシートで開く</button>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #c8e6b8;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button onclick="openEmployeeEdit('${e.id}')" style="background:#fff;border:1.5px solid #c8e6b8;border-radius:10px;padding:10px;color:#38a000;font-size:13px;font-weight:600;font-family:'Noto Sans JP',sans-serif;cursor:pointer;">✏️ 編集</button>
+          <button onclick="reissuePassword('${e.id}')" style="background:#fff;border:1.5px solid #c8e6b8;border-radius:10px;padding:10px;color:#38a000;font-size:13px;font-weight:600;font-family:'Noto Sans JP',sans-serif;cursor:pointer;">🔑 パスワード再発行</button>
+        </div>
+        <button onclick="deleteEmployee('${e.id}')" style="background:#fff;border:1.5px solid #cc3300;border-radius:10px;padding:10px;color:#cc3300;font-size:13px;font-weight:600;width:100%;margin-top:8px;font-family:'Noto Sans JP',sans-serif;cursor:pointer;">🗑 このスタッフを削除</button>
       </div>
     </div>`).join('');
 }
@@ -938,6 +971,7 @@ async function addEmployee(){
   const email=document.getElementById('add-email').value.trim();
   const wage=Number(document.getElementById('add-wage').value);
   if(!name||!email){alert('名前とメールアドレスは必須です');return;}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){alert('メールアドレスの形式が正しくありません');return;}
   if(wage<=0){alert('アルバイト単価を正しく入力してください');return;}
 
   const btn=document.getElementById('add-emp-btn');
@@ -970,6 +1004,87 @@ async function addEmployee(){
       </div>
       <button onclick="document.getElementById('added-result').style.display='none'" style="background:none;border:1px solid #c8e6b8;border-radius:10px;padding:10px;width:100%;font-size:13px;color:#7a9a6a;font-family:'Noto Sans JP',sans-serif;">閉じる</button>
     </div>`;
+}
+
+// スタッフ編集
+async function openEmployeeEdit(id){
+  const emps=await DB.get('employees')||initEmployees;
+  const emp=emps.find(e=>e&&e.id===id);
+  if(!emp){ alert('スタッフが見つかりません'); return; }
+  editingEmployeeId=id;
+  document.getElementById('edit-target').textContent=`${emp.name} さん`;
+  document.getElementById('edit-name').value=emp.name;
+  document.getElementById('edit-email').value=emp.email;
+  document.getElementById('edit-wage').value=emp.hourlyWage;
+  document.getElementById('edit-err').style.display='none';
+  show('employee-edit-screen');
+}
+
+function exitEmployeeEdit(){
+  editingEmployeeId=null;
+  renderAdminEmployees();
+  show('admin-employees-screen');
+}
+
+async function saveEmployeeEdit(){
+  const name=document.getElementById('edit-name').value.trim();
+  const email=document.getElementById('edit-email').value.trim();
+  const wage=Number(document.getElementById('edit-wage').value);
+  const errEl=document.getElementById('edit-err');
+  errEl.style.display='none';
+  if(!name||!email){ errEl.textContent='名前とメールアドレスは必須です'; errEl.style.display='block'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ errEl.textContent='メールアドレスの形式が正しくありません'; errEl.style.display='block'; return; }
+  if(!(wage>0)){ errEl.textContent='時給を正しく入力してください'; errEl.style.display='block'; return; }
+  const btn=document.getElementById('edit-save-btn');
+  btn.textContent='保存中...'; btn.disabled=true;
+  try{
+    const emps=await DB.get('employees')||initEmployees;
+    if(emps.find(e=>e&&e.id!==editingEmployeeId&&e.email===email)){
+      errEl.textContent='このメールアドレスは別のスタッフが使用しています'; errEl.style.display='block';
+      btn.textContent='保存する'; btn.disabled=false; return;
+    }
+    const updated=emps.map(e=>e&&e.id===editingEmployeeId?{...e,name,email,hourlyWage:wage}:e);
+    await DB.set('employees',updated);
+    alert('スタッフ情報を更新しました。');
+    btn.textContent='保存する'; btn.disabled=false;
+    exitEmployeeEdit();
+  }catch(e){
+    errEl.textContent='保存に失敗しました。もう一度お試しください。'; errEl.style.display='block';
+    btn.textContent='保存する'; btn.disabled=false;
+  }
+}
+
+// パスワード再発行（オーナーが実行）
+async function reissuePassword(id){
+  const emps=await DB.get('employees')||initEmployees;
+  const emp=emps.find(e=>e&&e.id===id);
+  if(!emp){ alert('スタッフが見つかりません'); return; }
+  if(!confirm(`${emp.name} さんのパスワードを再発行しますか？\n\n新しい初期パスワードが発行され、次回ログイン時にスタッフ本人がパスワードを設定し直します。`)) return;
+  const newPass=genPassword();
+  const updated=emps.map(e=>e&&e.id===id?{...e,password:newPass,isFirstLogin:true}:e);
+  await DB.set('employees',updated);
+  alert(`新しい初期パスワード：${newPass}\n\nこのパスワードをスタッフに伝えてください。\n次回ログイン時に本人が新しいパスワードを設定します。`);
+  renderAdminEmployees();
+}
+
+// スタッフ削除
+async function deleteEmployee(id){
+  const emps=await DB.get('employees')||initEmployees;
+  const emp=emps.find(e=>e&&e.id===id);
+  if(!emp){ alert('スタッフが見つかりません'); return; }
+  if(!confirm(`${emp.name} さんを削除しますか？\n\nこのスタッフの勤務記録・シフトもすべて削除されます。\n（必要なら先にCSV出力で記録を保存してください）\n\nこの操作は元に戻せません。`)) return;
+  const updatedEmps=emps.filter(e=>e&&e.id!==id);
+  const recs=await DB.get('records')||{};
+  const updatedRecs={...recs};
+  delete updatedRecs[id];
+  const shifts=await DB.get('shifts')||{};
+  const updatedShifts={};
+  Object.keys(shifts).forEach(k=>{ if(!k.startsWith(`${id}_`)) updatedShifts[k]=shifts[k]; });
+  await DB.set('employees',updatedEmps);
+  await DB.set('records',updatedRecs);
+  await DB.set('shifts',updatedShifts);
+  alert(`${emp.name} さんを削除しました。`);
+  renderAdminEmployees();
 }
 
 // デモデータにリセット
