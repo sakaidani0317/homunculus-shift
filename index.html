@@ -566,6 +566,7 @@ function updateClock(){
 
 // 打刻
 function toRecsArray(v){ return Array.isArray(v) ? v : (v && typeof v==='object' ? Object.values(v) : []); }
+function dateKeyOf(iso){ const d=new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 
 async function renderPunch(){
   const area=document.getElementById('punch-area');
@@ -580,8 +581,13 @@ async function renderPunch(){
   if(!todayRec){
     area.innerHTML=`<button class="btn btn-green" onclick="clockIn()" id="clock-in-btn" style="font-size:18px;padding:18px;border-radius:16px;">出勤する</button>`;
   } else if(!todayRec.outTime){
+    const inKey=dateKeyOf(todayRec.inTime);
+    const stale=inKey!==today;
+    const timeLabel=stale?`${inKey} ${fmt(todayRec.inTime)}`:`${fmt(todayRec.inTime)}`;
+    const warn=stale?`<div style="background:rgba(204,51,0,0.1);border:1px solid rgba(204,51,0,0.4);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#cc3300;">⚠ 前日からの退勤忘れの可能性があります。確認してください。</div>`:'';
     area.innerHTML=`
-      <div class="working-badge"><span>✅</span> 出勤中 · ${fmt(todayRec.inTime)} より</div>
+      ${warn}
+      <div class="working-badge"><span>✅</span> 出勤中 · ${timeLabel} より</div>
       <button class="btn btn-red" onclick="clockOut()" id="clock-out-btn" style="font-size:18px;padding:18px;border-radius:16px;">退勤する</button>`;
   } else {
     area.innerHTML=`
@@ -590,7 +596,8 @@ async function renderPunch(){
         <div class="punch-item"><div class="punch-item-label">退勤</div><div class="punch-item-value">${fmt(todayRec.outTime)}</div></div>
         <div class="punch-item"><div class="punch-item-label">勤務</div><div class="punch-item-value">${Math.floor(todayRec.mins/60)}h${todayRec.mins%60}m</div></div>
       </div>
-      <div class="pay-box"><div class="pay-label">本日の給与</div><div class="pay-amount">¥ ${todayRec.pay.toLocaleString()}</div></div>`;
+      <div class="pay-box"><div class="pay-label">本日の給与</div><div class="pay-amount">¥ ${todayRec.pay.toLocaleString()}</div></div>
+      <div style="margin-top:12px;text-align:center;font-size:12px;color:#7a9a6a;">本日の勤務は完了しました</div>`;
   }
 }
 
@@ -599,19 +606,27 @@ async function clockIn(){
   btn.textContent='処理中...'; btn.disabled=true;
   const recs=await DB.get('records')||{};
   const myRecs=toRecsArray(recs[currentUser.id]);
-  if(myRecs.some(r=>r&&!r.outTime)){ renderPunch(); return; }
-  const rec={id:Date.now(),date:todayKey(),inTime:new Date().toISOString(),outTime:null,mins:null,pay:null};
+  if(myRecs.some(r=>r&&!r.outTime)){ alert('すでに出勤中の記録があります。先に退勤してください。'); renderPunch(); return; }
+  const today=todayKey();
+  if(myRecs.some(r=>r&&r.date===today&&r.outTime)){ alert('本日はすでに退勤済みです。同日内の再出勤はできません。'); renderPunch(); return; }
+  const rec={id:Date.now(),date:today,inTime:new Date().toISOString(),outTime:null,mins:null,pay:null};
   await DB.set('records',{...recs,[currentUser.id]:[...myRecs,rec]});
   renderPunch();
 }
 
 async function clockOut(){
-  const btn=document.getElementById('clock-out-btn');
-  btn.textContent='処理中...'; btn.disabled=true;
   const recs=await DB.get('records')||{};
   const myRecs=toRecsArray(recs[currentUser.id]);
   const tr=myRecs.find(r=>r&&!r.outTime);
   if(!tr){renderPunch();return;}
+  const inKey=dateKeyOf(tr.inTime);
+  if(inKey!==todayKey()){
+    const totalMins=Math.max(0,Math.round((new Date()-new Date(tr.inTime))/60000));
+    const h=Math.floor(totalMins/60), m=totalMins%60;
+    if(!confirm(`前回の出勤は ${inKey} ${fmt(tr.inTime)} です。\n\n本当に今の時刻で退勤しますか？\n勤務時間 ${h}時間${m}分 として記録されます。`)) return;
+  }
+  const btn=document.getElementById('clock-out-btn');
+  if(btn){ btn.textContent='処理中...'; btn.disabled=true; }
   const out=new Date().toISOString();
   const mins=diffMin(tr.inTime,out);
   const pay=calcPay(mins,currentUser.hourlyWage);
@@ -680,10 +695,11 @@ function updateShiftLabel(shifts){
 }
 
 async function saveShift(){
-  const btn=document.getElementById('save-shift-btn');
-  btn.textContent='保存中...'; btn.disabled=true;
   const start=document.getElementById('shift-start').value;
   const end=document.getElementById('shift-end').value;
+  if(start>=end){ alert('終了時刻は開始時刻より後に設定してください。'); return; }
+  const btn=document.getElementById('save-shift-btn');
+  btn.textContent='保存中...'; btn.disabled=true;
   const shifts=await DB.get('shifts')||{};
   await DB.set('shifts',{...shifts,[`${currentUser.id}_${selectedDate}`]:{start,end}});
   btn.textContent='シフトを登録する'; btn.disabled=false;
